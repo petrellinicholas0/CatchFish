@@ -1,0 +1,1402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#ff6b47">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CatchFish">
+<meta name="description" content="Detect fake dating profiles, AI photos & romance scammers instantly.">
+<title>CatchFish — Fake Profile Detector</title>
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,700;0,9..144,900;1,9..144,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+/* ─── DESIGN SYSTEM ─────────────────────────────── */
+:root {
+  --ink:       #0e0c0a;
+  --ink2:      #1a1714;
+  --ink3:      #252119;
+  --paper:     #f5f0e8;
+  --paper2:    #ede7d9;
+  --paper3:    #e4dccc;
+  --coral:     #ff6b47;
+  --coral-dk:  #e55535;
+  --coral-lt:  rgba(255,107,71,0.12);
+  --teal:      #00b8a0;
+  --teal-lt:   rgba(0,184,160,0.12);
+  --amber:     #f5a623;
+  --amber-lt:  rgba(245,166,35,0.12);
+  --rose:      #e8415a;
+  --rose-lt:   rgba(232,65,90,0.12);
+  --muted:     #7a7060;
+  --muted2:    #a09880;
+  --border:    rgba(14,12,10,0.12);
+  --border2:   rgba(14,12,10,0.22);
+  --r:         12px;
+  --r-sm:      8px;
+  --nav-h:     68px;
+  --safe-b:    env(safe-area-inset-bottom, 0px);
+  --shadow:    0 2px 16px rgba(14,12,10,0.1);
+  --shadow-lg: 0 8px 40px rgba(14,12,10,0.18);
+}
+
+/* ─── RESET ─────────────────────────────── */
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{height:100%;font-size:16px}
+body{
+  font-family:'Fraunces',Georgia,serif;
+  background:var(--paper);
+  color:var(--ink);
+  min-height:100%;
+  overflow-x:hidden;
+  padding-bottom:calc(var(--nav-h) + var(--safe-b) + 24px);
+}
+
+/* Grain overlay */
+body::before{
+  content:'';
+  position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  background-size:200px 200px;
+  pointer-events:none;z-index:0;opacity:0.6;
+}
+
+/* ─── TYPOGRAPHY ─────────────────────────────── */
+h1,h2,h3,h4{font-weight:900;letter-spacing:-0.03em;line-height:1.1}
+.mono{font-family:'JetBrains Mono',monospace}
+
+/* ─── SCROLLBAR ─────────────────────────────── */
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+/* ─── BOTTOM NAV ─────────────────────────────── */
+.nav{
+  position:fixed;bottom:0;left:0;right:0;
+  height:calc(var(--nav-h) + var(--safe-b));
+  background:rgba(245,240,232,0.96);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  border-top:1.5px solid var(--border2);
+  display:flex;align-items:flex-start;
+  padding-top:10px;
+  z-index:100;
+}
+
+.nav-btn{
+  flex:1;display:flex;flex-direction:column;
+  align-items:center;gap:3px;cursor:pointer;
+  padding:6px 0;position:relative;
+}
+
+.nav-btn-icon{font-size:22px;transition:transform .2s}
+.nav-btn-label{
+  font-family:'JetBrains Mono',monospace;
+  font-size:9px;letter-spacing:0.08em;
+  color:var(--muted2);transition:color .2s;
+}
+.nav-btn.on .nav-btn-label{color:var(--coral)}
+.nav-btn.on .nav-btn-icon{transform:scale(1.15)}
+.nav-btn.on::before{
+  content:'';position:absolute;
+  top:-10px;left:50%;transform:translateX(-50%);
+  width:28px;height:3px;
+  background:var(--coral);border-radius:0 0 3px 3px;
+}
+
+/* ─── PAGES ─────────────────────────────── */
+.page{display:none;position:relative;z-index:1;animation:pIn .28s ease}
+.page.on{display:block}
+@keyframes pIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+/* ─── PAGE HEADER ─────────────────────────────── */
+.ph{
+  padding:52px 20px 18px;
+  position:sticky;top:0;
+  background:rgba(245,240,232,0.94);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-bottom:1.5px solid var(--border);
+  z-index:10;
+}
+.ph-title{font-size:26px;font-weight:900}
+.ph-sub{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-top:3px;letter-spacing:0.06em}
+
+.sb{padding:18px 18px 0}
+
+/* ─── CARDS ─────────────────────────────── */
+.card{
+  background:#fff;
+  border:1.5px solid var(--border);
+  border-radius:var(--r);
+  overflow:hidden;margin-bottom:12px;
+  box-shadow:var(--shadow);
+}
+.card-hd{
+  padding:14px 16px;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;
+}
+.card-hd-icon{font-size:18px}
+.card-hd h3{font-size:14px;font-weight:700;flex:1}
+.card-hd-tag{
+  font-family:'JetBrains Mono',monospace;
+  font-size:9px;letter-spacing:0.08em;
+  color:var(--muted2);
+  background:var(--paper2);
+  padding:3px 8px;border-radius:100px;
+}
+.cb{padding:16px}
+
+/* ─── USAGE STRIP ─────────────────────────────── */
+.usage-strip{
+  background:#fff;
+  border:1.5px solid var(--border);
+  border-radius:var(--r);
+  padding:14px 16px;
+  margin-bottom:12px;
+  display:flex;align-items:center;gap:14px;
+  box-shadow:var(--shadow);
+}
+.usage-left{flex:1}
+.usage-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
+.usage-label{font-size:12px;font-weight:700}
+.usage-count{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted)}
+.usage-track{height:5px;background:var(--paper2);border-radius:100px;overflow:hidden}
+.usage-fill{height:100%;border-radius:100px;background:var(--teal);transition:width .5s ease}
+.usage-fill.w{background:var(--amber)}
+.usage-fill.d{background:var(--rose)}
+.usage-reset{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-top:5px}
+.btn-up{
+  background:var(--coral);color:#fff;
+  border:none;border-radius:var(--r-sm);
+  padding:9px 14px;font-family:'Fraunces',serif;
+  font-size:12px;font-weight:700;cursor:pointer;
+  white-space:nowrap;flex-shrink:0;
+  transition:transform .15s;
+}
+.btn-up:active{transform:scale(0.95)}
+
+/* ─── UPLOAD ─────────────────────────────── */
+.upload-zone{
+  border:2px dashed var(--border2);
+  border-radius:var(--r);
+  padding:28px 16px;text-align:center;
+  cursor:pointer;position:relative;
+  background:var(--paper2);transition:all .2s;
+}
+.upload-zone:active,.upload-zone.hot{
+  border-color:var(--coral);background:var(--coral-lt);
+}
+.upload-zone input{
+  position:absolute;inset:0;opacity:0;
+  cursor:pointer;width:100%;height:100%;
+}
+.upload-zone-icon{font-size:32px;display:block;margin-bottom:8px}
+.upload-zone h4{font-size:13px;font-weight:700;margin-bottom:3px}
+.upload-zone p{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted)}
+
+.prev-wrap{display:none;position:relative}
+.prev-wrap img{width:100%;max-height:240px;object-fit:cover;border-radius:var(--r-sm);display:block}
+.prev-clear{
+  position:absolute;top:8px;right:8px;
+  width:26px;height:26px;
+  background:rgba(14,12,10,.75);border:none;
+  border-radius:50%;color:#fff;font-size:13px;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+}
+
+/* ─── FORM ─────────────────────────────── */
+.fg{margin-bottom:12px}
+label{
+  display:block;
+  font-family:'JetBrains Mono',monospace;
+  font-size:9px;letter-spacing:0.12em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:6px;
+}
+input[type=text],textarea{
+  width:100%;background:var(--paper2);
+  border:1.5px solid var(--border);
+  border-radius:var(--r-sm);
+  padding:11px 13px;
+  font-family:'JetBrains Mono',monospace;
+  font-size:12px;color:var(--ink);
+  outline:none;resize:vertical;
+  transition:border-color .2s;-webkit-appearance:none;
+}
+input:focus,textarea:focus{border-color:var(--coral)}
+textarea{min-height:84px;line-height:1.55}
+.r2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* ─── BUTTONS ─────────────────────────────── */
+.btn-p{
+  width:100%;padding:16px;
+  background:var(--coral);color:#fff;
+  border:none;border-radius:var(--r);
+  font-family:'Fraunces',serif;font-size:16px;font-weight:900;
+  cursor:pointer;transition:all .2s;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  letter-spacing:-0.02em;box-shadow:0 4px 20px rgba(255,107,71,.35);
+}
+.btn-p:active{transform:scale(0.97)}
+.btn-p:disabled{opacity:.42;cursor:not-allowed;transform:none;box-shadow:none}
+
+.btn-s{
+  padding:11px 18px;background:transparent;
+  color:var(--coral);border:1.5px solid var(--coral);
+  border-radius:var(--r-sm);
+  font-family:'Fraunces',serif;font-size:13px;font-weight:700;
+  cursor:pointer;transition:all .2s;
+}
+.btn-s:active{background:var(--coral-lt)}
+
+.btn-g{
+  padding:11px 18px;background:var(--paper2);
+  color:var(--ink);border:1.5px solid var(--border);
+  border-radius:var(--r-sm);
+  font-family:'Fraunces',serif;font-size:13px;font-weight:700;
+  cursor:pointer;transition:all .15s;
+}
+.btn-g:active{background:var(--paper3)}
+
+/* ─── LOADING ─────────────────────────────── */
+.loading-ov{
+  position:fixed;inset:0;
+  background:rgba(245,240,232,.93);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  display:none;flex-direction:column;
+  align-items:center;justify-content:center;
+  z-index:200;padding:40px;
+}
+.loading-ov.on{display:flex}
+
+.fish-loader{
+  font-size:52px;
+  animation:fishSwim 1.2s ease-in-out infinite alternate;
+  margin-bottom:20px;
+}
+@keyframes fishSwim{
+  from{transform:translateX(-12px) scaleX(1)}
+  to{transform:translateX(12px) scaleX(-1)}
+}
+
+.loading-title{font-size:22px;font-weight:900;margin-bottom:6px}
+.loading-sub{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:24px}
+
+.ls-wrap{width:100%;max-width:260px}
+.ls-row{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 0;border-bottom:1px solid var(--border);
+  font-family:'JetBrains Mono',monospace;font-size:11px;
+  color:var(--muted2);transition:color .3s;
+}
+.ls-row:last-child{border:none}
+.ls-dot{
+  width:7px;height:7px;border-radius:50%;
+  background:var(--border2);flex-shrink:0;transition:background .3s;
+}
+.ls-row.done{color:var(--teal)}.ls-row.done .ls-dot{background:var(--teal)}
+.ls-row.cur{color:var(--ink)}.ls-row.cur .ls-dot{background:var(--coral);animation:dp 1s infinite}
+@keyframes dp{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
+
+/* ─── SCORE HERO ─────────────────────────────── */
+.score-hero{
+  background:#fff;border:1.5px solid var(--border);
+  border-radius:var(--r);padding:26px 18px;
+  text-align:center;margin-bottom:12px;
+  position:relative;overflow:hidden;
+  box-shadow:var(--shadow-lg);
+}
+.score-hero::before{
+  content:'';position:absolute;
+  top:0;left:0;right:0;height:4px;border-radius:var(--r) var(--r) 0 0;
+}
+.score-hero.hi::before{background:var(--teal)}
+.score-hero.md::before{background:var(--amber)}
+.score-hero.lo::before{background:var(--rose)}
+
+.score-tag{
+  font-family:'JetBrains Mono',monospace;
+  font-size:9px;letter-spacing:0.15em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:10px;
+}
+.score-num{
+  font-size:88px;font-weight:900;line-height:1;
+  letter-spacing:-0.06em;margin-bottom:4px;
+}
+.score-num.hi{color:var(--teal)}
+.score-num.md{color:var(--amber)}
+.score-num.lo{color:var(--rose)}
+
+.score-track{
+  height:7px;background:var(--paper2);
+  border-radius:100px;overflow:hidden;
+  margin:14px auto;max-width:240px;
+}
+.score-fill{
+  height:100%;border-radius:100px;
+  transition:width 1.3s cubic-bezier(.4,0,.2,1);width:0;
+}
+.score-fill.hi{background:var(--teal)}
+.score-fill.md{background:var(--amber)}
+.score-fill.lo{background:var(--rose)}
+
+.score-verdict{font-size:18px;font-weight:900;margin-bottom:6px}
+.score-summary{
+  font-family:'JetBrains Mono',monospace;
+  font-size:11px;color:var(--muted);
+  line-height:1.7;max-width:320px;margin:0 auto;
+}
+
+/* ─── CHECKS ─────────────────────────────── */
+.checks{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.check-row{
+  background:#fff;border:1.5px solid var(--border);
+  border-radius:var(--r-sm);padding:13px 14px;
+  display:flex;gap:10px;align-items:flex-start;
+  box-shadow:var(--shadow);
+}
+.check-icon{font-size:17px;flex-shrink:0;margin-top:1px}
+.check-info{flex:1;min-width:0}
+.check-name{font-size:13px;font-weight:700;margin-bottom:2px}
+.check-detail{
+  font-family:'JetBrains Mono',monospace;
+  font-size:10px;color:var(--muted);line-height:1.5;
+}
+.check-pill{
+  font-family:'JetBrains Mono',monospace;font-size:8px;
+  padding:3px 7px;border-radius:100px;flex-shrink:0;
+  align-self:flex-start;margin-top:2px;font-weight:600;
+  letter-spacing:0.06em;
+}
+.check-pill.pass{background:var(--teal-lt);color:var(--teal)}
+.check-pill.warn{background:var(--amber-lt);color:var(--amber)}
+.check-pill.fail{background:var(--rose-lt);color:var(--rose)}
+.check-pill.skip{background:var(--paper2);color:var(--muted)}
+
+/* ─── FLAGS ─────────────────────────────── */
+.flag-list{list-style:none}
+.flag-row{
+  display:flex;gap:10px;padding:11px 0;
+  border-bottom:1px solid var(--border);
+  align-items:flex-start;
+}
+.flag-row:last-child{border:none;padding-bottom:0}
+.flag-em{flex-shrink:0}
+.flag-txt{font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.55;color:var(--ink)}
+
+/* ─── ANALYSIS TEXT ─────────────────────────────── */
+.analysis-txt{
+  font-family:'JetBrains Mono',monospace;
+  font-size:11px;line-height:1.85;
+  color:var(--ink);white-space:pre-wrap;
+}
+
+/* ─── ACTIONS ROW ─────────────────────────────── */
+.act-row{display:flex;gap:8px;margin-bottom:12px}
+.act-row>*{flex:1}
+
+/* ─── DISCLAIMER ─────────────────────────────── */
+.disc{
+  background:var(--amber-lt);
+  border:1.5px solid rgba(245,166,35,.3);
+  border-radius:var(--r);padding:13px 15px;
+  margin-bottom:12px;
+}
+.disc p{
+  font-family:'JetBrains Mono',monospace;
+  font-size:10px;color:var(--muted);line-height:1.7;
+}
+.disc strong{color:var(--coral)}
+
+/* ─── HISTORY ─────────────────────────────── */
+.empty{text-align:center;padding:56px 20px}
+.empty-icon{font-size:44px;display:block;margin-bottom:12px}
+.empty-title{font-size:18px;font-weight:900;margin-bottom:6px}
+.empty-sub{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);line-height:1.6}
+
+.hist-item{
+  background:#fff;border:1.5px solid var(--border);
+  border-radius:var(--r);padding:14px 16px;
+  margin-bottom:10px;display:flex;gap:12px;
+  align-items:center;cursor:pointer;
+  transition:border-color .2s;box-shadow:var(--shadow);
+}
+.hist-item:active{border-color:var(--coral)}
+.hist-score{
+  width:46px;height:46px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;font-weight:900;flex-shrink:0;
+}
+.hist-score.hi{background:var(--teal-lt);color:var(--teal);border:2px solid rgba(0,184,160,.3)}
+.hist-score.md{background:var(--amber-lt);color:var(--amber);border:2px solid rgba(245,166,35,.3)}
+.hist-score.lo{background:var(--rose-lt);color:var(--rose);border:2px solid rgba(232,65,90,.3)}
+.hist-info{flex:1;min-width:0}
+.hist-verdict{font-size:13px;font-weight:700;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hist-meta{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted)}
+.hist-arr{color:var(--muted);font-size:15px}
+
+/* ─── LEARN ─────────────────────────────── */
+.tip-card{
+  background:#fff;border:1.5px solid var(--border);
+  border-radius:var(--r);margin-bottom:10px;overflow:hidden;
+  box-shadow:var(--shadow);
+}
+.tip-hd{
+  padding:14px 16px;
+  display:flex;align-items:center;gap:10px;
+  cursor:pointer;user-select:none;
+  background:var(--paper2);
+}
+.tip-hd-icon{font-size:19px}
+.tip-hd span{font-size:13px;font-weight:700;flex:1}
+.chev{color:var(--muted);font-size:11px;transition:transform .22s}
+.tip-card.open .chev{transform:rotate(180deg)}
+.tip-body{
+  max-height:0;overflow:hidden;
+  transition:max-height .35s ease,padding .2s;
+}
+.tip-card.open .tip-body{max-height:700px;padding:15px 16px}
+.tip-body p{
+  font-family:'JetBrains Mono',monospace;
+  font-size:11px;color:var(--muted);
+  line-height:1.8;margin-bottom:9px;
+}
+.tip-body p:last-child{margin-bottom:0}
+
+.scam-item{
+  background:var(--rose-lt);border:1px solid rgba(232,65,90,.2);
+  border-radius:6px;padding:8px 11px;margin-bottom:5px;
+  font-family:'JetBrains Mono',monospace;font-size:11px;
+  color:var(--rose);display:flex;align-items:flex-start;gap:7px;
+}
+.green-item{
+  background:var(--teal-lt);border:1px solid rgba(0,184,160,.2);
+  border-radius:6px;padding:8px 11px;margin-bottom:5px;
+  font-family:'JetBrains Mono',monospace;font-size:11px;
+  color:var(--teal);display:flex;align-items:flex-start;gap:7px;
+}
+
+/* ─── SETTINGS ─────────────────────────────── */
+.set-section{
+  font-family:'JetBrains Mono',monospace;
+  font-size:9px;letter-spacing:0.12em;text-transform:uppercase;
+  color:var(--muted2);margin:18px 0 7px;
+}
+.set-row{
+  background:#fff;border:1.5px solid var(--border);
+  border-radius:var(--r-sm);padding:13px 15px;
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:7px;cursor:pointer;box-shadow:var(--shadow);
+}
+.set-label{font-size:14px;font-weight:700}
+.set-sub{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-top:2px}
+.set-arr{color:var(--muted);font-size:13px}
+
+/* toggle */
+.tog{position:relative;width:42px;height:22px}
+.tog input{opacity:0;width:0;height:0}
+.tog-track{
+  position:absolute;inset:0;
+  background:var(--border2);border-radius:100px;
+  cursor:pointer;transition:background .2s;
+}
+.tog input:checked+.tog-track{background:var(--coral)}
+.tog-thumb{
+  position:absolute;top:3px;left:3px;
+  width:16px;height:16px;background:#fff;
+  border-radius:50%;transition:transform .2s;
+  pointer-events:none;
+}
+.tog input:checked~.tog-thumb{transform:translateX(20px)}
+
+/* ─── PAYWALL MODAL ─────────────────────────────── */
+.modal-ov{
+  position:fixed;inset:0;
+  background:rgba(14,12,10,.65);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  z-index:300;display:none;
+  align-items:flex-end;justify-content:center;
+}
+.modal-ov.on{display:flex}
+.modal-sheet{
+  background:var(--paper);
+  border:1.5px solid var(--border2);
+  border-radius:24px 24px 0 0;
+  padding:24px 20px 40px;
+  width:100%;max-width:480px;
+  animation:shUp .35s cubic-bezier(.4,0,.2,1);
+}
+@keyframes shUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.modal-handle{
+  width:32px;height:3px;background:var(--border2);
+  border-radius:2px;margin:0 auto 22px;
+}
+.modal-title{font-size:26px;font-weight:900;text-align:center;margin-bottom:5px}
+.modal-sub{
+  font-family:'JetBrains Mono',monospace;font-size:11px;
+  color:var(--muted);text-align:center;margin-bottom:22px;line-height:1.6;
+}
+
+.plan-opt{
+  border:2px solid var(--border2);border-radius:var(--r);
+  padding:14px;margin-bottom:8px;cursor:pointer;
+  display:flex;align-items:center;gap:12px;
+  transition:all .2s;background:#fff;
+}
+.plan-opt.sel{border-color:var(--coral);background:var(--coral-lt)}
+.plan-radio{
+  width:18px;height:18px;border-radius:50%;
+  border:2px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;transition:all .2s;
+}
+.plan-opt.sel .plan-radio{border-color:var(--coral);background:var(--coral)}
+.plan-opt.sel .plan-radio::after{
+  content:'';width:6px;height:6px;
+  background:#fff;border-radius:50%;
+}
+.plan-info{flex:1}
+.plan-name{font-size:14px;font-weight:700;margin-bottom:1px}
+.plan-price{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted)}
+.plan-badge{
+  font-family:'JetBrains Mono',monospace;font-size:9px;
+  font-weight:600;padding:3px 8px;border-radius:100px;flex-shrink:0;
+}
+.plan-badge.hot{background:var(--coral);color:#fff}
+.plan-badge.best{background:var(--teal);color:#fff}
+
+.modal-feats{margin:14px 0 18px;list-style:none}
+.modal-feat{
+  display:flex;align-items:center;gap:9px;
+  font-family:'JetBrains Mono',monospace;
+  font-size:11px;color:var(--muted);padding:5px 0;
+}
+.modal-feat::before{content:'✓';color:var(--teal);font-weight:700}
+.modal-legal{
+  font-family:'JetBrains Mono',monospace;font-size:9px;
+  color:var(--muted2);text-align:center;margin-top:11px;line-height:1.6;
+}
+
+/* ─── ONBOARDING ─────────────────────────────── */
+.ob-ov{
+  position:fixed;inset:0;background:var(--paper);
+  z-index:500;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  padding:40px 24px;text-align:center;
+}
+.ob-ov.gone{display:none}
+.ob-fish{font-size:64px;margin-bottom:10px;animation:fishBob 2s ease-in-out infinite}
+@keyframes fishBob{0%,100%{transform:translateY(0) rotate(-5deg)}50%{transform:translateY(-8px) rotate(5deg)}}
+.ob-title{font-size:38px;font-weight:900;letter-spacing:-0.04em;margin-bottom:8px}
+.ob-title span{color:var(--coral)}
+.ob-sub{
+  font-family:'JetBrains Mono',monospace;font-size:12px;
+  color:var(--muted);line-height:1.7;margin-bottom:32px;
+}
+.ob-feats{width:100%;margin-bottom:30px}
+.ob-feat{
+  display:flex;align-items:center;gap:14px;
+  padding:13px 0;border-bottom:1px solid var(--border);text-align:left;
+}
+.ob-feat:last-child{border:none}
+.ob-feat-icon{font-size:22px;flex-shrink:0}
+.ob-feat h4{font-size:13px;font-weight:700;margin-bottom:1px}
+.ob-feat p{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted)}
+.ob-note{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-top:10px}
+
+/* ─── SHARE CARD ─────────────────────────────── */
+/* Hidden canvas-like div for screenshot sharing */
+#shareCard{
+  position:fixed;
+  left:-9999px;top:0;
+  width:390px;
+  background:var(--ink2);
+  padding:32px 28px;
+  font-family:'Fraunces',serif;
+  z-index:-1;
+}
+.sc-logo{font-size:13px;font-weight:700;color:var(--coral);letter-spacing:-0.01em;margin-bottom:20px}
+.sc-score{font-size:72px;font-weight:900;letter-spacing:-0.06em;line-height:1;margin-bottom:4px}
+.sc-score.hi{color:var(--teal)}.sc-score.md{color:var(--amber)}.sc-score.lo{color:var(--rose)}
+.sc-verdict{font-size:16px;font-weight:700;color:#fff;margin-bottom:8px}
+.sc-summary{font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,.55);line-height:1.6;margin-bottom:20px}
+.sc-checks{display:flex;flex-direction:column;gap:6px;margin-bottom:20px}
+.sc-check{
+  display:flex;align-items:center;gap:8px;
+  font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,.7);
+}
+.sc-check-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.sc-check-dot.pass{background:var(--teal)}.sc-check-dot.warn{background:var(--amber)}
+.sc-check-dot.fail{background:var(--rose)}.sc-check-dot.skip{background:#555}
+.sc-footer{
+  font-family:'JetBrains Mono',monospace;font-size:9px;
+  color:rgba(255,255,255,.3);letter-spacing:0.08em;
+  border-top:1px solid rgba(255,255,255,.08);padding-top:12px;
+}
+
+/* ─── TOAST ─────────────────────────────── */
+.toast{
+  position:fixed;
+  bottom:calc(var(--nav-h) + 14px + var(--safe-b));
+  left:50%;transform:translateX(-50%) translateY(16px);
+  background:var(--ink);color:var(--paper);
+  border-radius:100px;padding:9px 18px;
+  font-family:'JetBrains Mono',monospace;font-size:11px;
+  white-space:nowrap;z-index:400;
+  opacity:0;transition:all .28s;pointer-events:none;
+}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ─── RESPONSIVE ─────────────────────────────── */
+@media(max-width:400px){
+  .r2{grid-template-columns:1fr}
+  .score-num{font-size:70px}
+  .ob-title{font-size:30px}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════ ONBOARDING -->
+<div class="ob-ov" id="ob">
+  <div class="ob-fish">🎣</div>
+  <h1 class="ob-title">Catch<span>Fish</span></h1>
+  <p class="ob-sub">Don't get catfished.<br>AI-powered dating profile detector.<br>Spots fakes, scammers & AI photos.</p>
+  <div class="ob-feats">
+    <div class="ob-feat"><span class="ob-feat-icon">🤖</span><div><h4>AI Photo Detection</h4><p>Spots AI-generated & stolen photos</p></div></div>
+    <div class="ob-feat"><span class="ob-feat-icon">🚩</span><div><h4>Scam Recognition</h4><p>Identifies romance scam patterns & bots</p></div></div>
+    <div class="ob-feat"><span class="ob-feat-icon">📊</span><div><h4>Trust Score</h4><p>0–100 authenticity score with breakdown</p></div></div>
+    <div class="ob-feat"><span class="ob-feat-icon">📤</span><div><h4>Share Results</h4><p>Generate a shareable result card</p></div></div>
+  </div>
+  <button class="btn-p" onclick="obDone()" style="max-width:320px">Start for Free 🎣</button>
+  <p class="ob-note">3 free analyses included · No signup needed</p>
+</div>
+
+<!-- ═══════════════════════════════════ PAYWALL -->
+<div class="modal-ov" id="pwModal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Unlock CatchFish 🎣</div>
+    <p class="modal-sub">You've used your free analyses.<br>Upgrade for unlimited protection.</p>
+
+    <div class="plan-opt sel" onclick="selPlan(this,'sub-monthly')" id="planM">
+      <div class="plan-radio"></div>
+      <div class="plan-info">
+        <div class="plan-name">Monthly</div>
+        <div class="plan-price">$4.99 / month · Cancel anytime</div>
+      </div>
+      <span class="plan-badge hot">POPULAR</span>
+    </div>
+
+    <div class="plan-opt" onclick="selPlan(this,'sub-yearly')" id="planY">
+      <div class="plan-radio"></div>
+      <div class="plan-info">
+        <div class="plan-name">Annual</div>
+        <div class="plan-price">$29.99 / year · Save 50%</div>
+      </div>
+      <span class="plan-badge best">BEST VALUE</span>
+    </div>
+
+    <div class="plan-opt" onclick="selPlan(this,'single')" id="planS">
+      <div class="plan-radio"></div>
+      <div class="plan-info">
+        <div class="plan-name">Single Analysis</div>
+        <div class="plan-price">$0.99 · One-time</div>
+      </div>
+    </div>
+
+    <ul class="modal-feats">
+      <li class="modal-feat">Unlimited profile analyses</li>
+      <li class="modal-feat">Full AI image scan</li>
+      <li class="modal-feat">Saved history & export</li>
+      <li class="modal-feat">Shareable result cards</li>
+      <li class="modal-feat">Advanced scam phrase database</li>
+    </ul>
+
+    <button class="btn-p" onclick="doUpgrade()">Continue</button>
+    <button class="btn-g" onclick="closePW()" style="width:100%;margin-top:8px">Maybe later</button>
+    <p class="modal-legal">Secure payment · Auto-renews unless cancelled<br>By continuing you agree to our Terms & Privacy Policy</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ LOADING -->
+<div class="loading-ov" id="loadOv">
+  <div class="fish-loader">🐟</div>
+  <div class="loading-title">Reeling it in…</div>
+  <p class="loading-sub mono">Analyzing profile · ~15 seconds</p>
+  <div class="ls-wrap" id="lsWrap">
+    <div class="ls-row"><div class="ls-dot"></div>Scanning photo for AI artifacts</div>
+    <div class="ls-row"><div class="ls-dot"></div>Analyzing bio patterns</div>
+    <div class="ls-row"><div class="ls-dot"></div>Checking profile consistency</div>
+    <div class="ls-row"><div class="ls-dot"></div>Detecting scam signatures</div>
+    <div class="ls-row"><div class="ls-dot"></div>Evaluating language patterns</div>
+    <div class="ls-row"><div class="ls-dot"></div>Calculating trust score</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- Hidden share card (rendered to canvas) -->
+<div id="shareCard"></div>
+
+<!-- ═══════════════════════════════════ PAGE: ANALYZE -->
+<div class="page on" id="pg-analyze">
+  <div class="ph">
+    <div class="ph-title">CatchFish 🎣</div>
+    <div class="ph-sub">dating profile analyzer</div>
+  </div>
+  <div class="sb">
+
+    <!-- Usage strip -->
+    <div class="usage-strip" id="uStrip">
+      <div class="usage-left">
+        <div class="usage-top">
+          <span class="usage-label">Free Analyses</span>
+          <span class="usage-count" id="uCount">3 remaining</span>
+        </div>
+        <div class="usage-track"><div class="usage-fill" id="uFill" style="width:100%"></div></div>
+        <div class="usage-reset mono" id="uReset"></div>
+      </div>
+      <button class="btn-up" onclick="openPW()">Upgrade</button>
+    </div>
+
+    <!-- Photo upload -->
+    <div class="card">
+      <div class="card-hd">
+        <span class="card-hd-icon">📸</span>
+        <h3>Profile Photo</h3>
+        <span class="card-hd-tag">optional</span>
+      </div>
+      <div class="cb">
+        <div class="upload-zone" id="upZone">
+          <input type="file" id="imgIn" accept="image/*">
+          <span class="upload-zone-icon">📷</span>
+          <h4>Tap to upload photo</h4>
+          <p>Screenshot their profile · PNG, JPG, WEBP</p>
+        </div>
+        <div class="prev-wrap" id="prevWrap">
+          <img id="prevImg" alt="Preview">
+          <button class="prev-clear" onclick="clearImg()">✕</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Profile details -->
+    <div class="card">
+      <div class="card-hd"><span class="card-hd-icon">📝</span><h3>Profile Details</h3></div>
+      <div class="cb">
+        <div class="fg">
+          <label>Bio / About Me *</label>
+          <textarea id="bio" placeholder="Paste their bio or about me text…"></textarea>
+        </div>
+        <div class="r2">
+          <div class="fg"><label>Age</label><input type="text" id="age" placeholder="e.g. 29" inputmode="numeric"></div>
+          <div class="fg"><label>Location</label><input type="text" id="loc" placeholder="e.g. Austin, TX"></div>
+        </div>
+        <div class="r2">
+          <div class="fg"><label>Occupation</label><input type="text" id="job" placeholder="e.g. Nurse"></div>
+          <div class="fg"><label>Platform</label><input type="text" id="plat" placeholder="e.g. Hinge"></div>
+        </div>
+        <div class="fg">
+          <label>Messages Received <span style="color:var(--muted2)">(optional)</span></label>
+          <textarea id="msgs" placeholder="Paste any messages they sent you — improves accuracy…" style="min-height:70px"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn-p" id="analyzeBtn" onclick="runAnalysis()">🔍 Analyze Profile</button>
+
+    <div class="disc" style="margin-top:12px">
+      <p><strong>⚠ Disclaimer:</strong> CatchFish provides AI-generated risk indicators — not definitive verdicts. Results should never be used to harass or discriminate against any individual. The developers accept no liability for decisions made based on this analysis. Always use your own judgment.</p>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ PAGE: RESULTS -->
+<div class="page" id="pg-results">
+  <div class="ph">
+    <div style="display:flex;align-items:center;gap:10px">
+      <button onclick="nav('analyze')" style="background:var(--paper2);border:1.5px solid var(--border);border-radius:var(--r-sm);padding:6px 12px;font-family:'Fraunces',serif;font-size:13px;font-weight:700;cursor:pointer;color:var(--ink)">← Back</button>
+      <div>
+        <div class="ph-title" style="font-size:20px">Results</div>
+        <div class="ph-sub" id="resDate"></div>
+      </div>
+    </div>
+  </div>
+  <div class="sb" id="resBody"></div>
+</div>
+
+<!-- ═══════════════════════════════════ PAGE: HISTORY -->
+<div class="page" id="pg-history">
+  <div class="ph">
+    <div class="ph-title">History 📋</div>
+    <div class="ph-sub">saved analyses</div>
+  </div>
+  <div class="sb" id="histBody"></div>
+</div>
+
+<!-- ═══════════════════════════════════ PAGE: LEARN -->
+<div class="page" id="pg-learn">
+  <div class="ph">
+    <div class="ph-title">Learn 📚</div>
+    <div class="ph-sub">spot fakes yourself</div>
+  </div>
+  <div class="sb">
+
+    <div class="tip-card" onclick="toggleTip(this)">
+      <div class="tip-hd"><span class="tip-hd-icon">🤖</span><span>Spotting AI-Generated Photos</span><span class="chev">▼</span></div>
+      <div class="tip-body">
+        <p>AI image generators have telltale signs. Look at ears — often asymmetric or malformed. Hair is impossibly perfect. Jewelry and glasses have loops that don't close. Backgrounds look dream-like with objects that don't make sense.</p>
+        <p>Eyes look "glassy" with identical catchlights in both eyes. Real photos rarely look this symmetric. Check if the photo exists elsewhere using Google Images, TinEye, or Yandex reverse image search.</p>
+        <p>Free tools: <strong>hivemoderation.com</strong> and <strong>aiornot.com</strong> can scan suspicious images.</p>
+      </div>
+    </div>
+
+    <div class="tip-card" onclick="toggleTip(this)">
+      <div class="tip-hd"><span class="tip-hd-icon">🚩</span><span>Romance Scam Phrases Database</span><span class="chev">▼</span></div>
+      <div class="tip-body">
+        <p>Watch for these scripted phrases — scammers reuse them constantly:</p>
+        <div style="margin:10px 0">
+          <div class="scam-item">🚩 "I'm an oil rig engineer / military surgeon overseas"</div>
+          <div class="scam-item">🚩 "God/fate brought you into my life"</div>
+          <div class="scam-item">🚩 "I lost my spouse recently and I'm lonely"</div>
+          <div class="scam-item">🚩 "Let's move off this app — here's my WhatsApp"</div>
+          <div class="scam-item">🚩 "I need help with a customs fee / hospital bill"</div>
+          <div class="scam-item">🚩 "I have a great crypto investment opportunity"</div>
+          <div class="scam-item">🚩 "Can you send a gift card / Bitcoin for me?"</div>
+          <div class="scam-item">🚩 "My camera is broken" (avoids video calls forever)</div>
+          <div class="scam-item">🚩 "I'm a widow with a young child" (sympathy hook)</div>
+          <div class="scam-item">🚩 "You're different from everyone else I've met"</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tip-card" onclick="toggleTip(this)">
+      <div class="tip-hd"><span class="tip-hd-icon">✅</span><span>Signs They're Probably Real</span><span class="chev">▼</span></div>
+      <div class="tip-body">
+        <div style="margin:6px 0">
+          <div class="green-item">✓ Multiple photos in different settings & outfits</div>
+          <div class="green-item">✓ Photos with friends or at recognizable local spots</div>
+          <div class="green-item">✓ Specific, personal bio (real neighborhood, hobby details)</div>
+          <div class="green-item">✓ Willing to video call with no excuses</div>
+          <div class="green-item">✓ Responds at realistic hours for their stated timezone</div>
+          <div class="green-item">✓ References things you said in earlier messages</div>
+          <div class="green-item">✓ Imperfect, candid-looking photos (not always model-perfect)</div>
+          <div class="green-item">✓ Can name specific local restaurants, streets, landmarks</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tip-card" onclick="toggleTip(this)">
+      <div class="tip-hd"><span class="tip-hd-icon">🔎</span><span>How to Reverse Image Search</span><span class="chev">▼</span></div>
+      <div class="tip-body">
+        <p>Save their photo, then go to <strong>images.google.com</strong> → click the camera icon → upload the photo. If the same face appears under different names or on stock photo sites, it's likely stolen.</p>
+        <p>Also try <strong>tineye.com</strong> and <strong>yandex.com/images</strong> — Yandex is especially powerful for finding Instagram models whose photos are commonly stolen.</p>
+        <p>Scammers frequently steal photos from military personnel, nurses, and fitness influencers who have large public photo libraries.</p>
+      </div>
+    </div>
+
+    <div class="tip-card" onclick="toggleTip(this)">
+      <div class="tip-hd"><span class="tip-hd-icon">💬</span><span>Test If They're a Bot or Offshore Scammer</span><span class="chev">▼</span></div>
+      <div class="tip-body">
+        <p>Ask hyper-local questions: "What's your favorite restaurant near [their stated neighborhood]?" A real person answers specifically. Scammers deflect or give vague answers.</p>
+        <p>Reference something specific from earlier in your conversation. Bots and script-readers often miss this context.</p>
+        <p>Insist on a live video call. Make them hold up a specific number of fingers or wave. Scammers always have an excuse — bad connection, broken camera, traveling, shy.</p>
+      </div>
+    </div>
+
+    <div class="tip-card" onclick="toggleTip(this)">
+      <div class="tip-hd"><span class="tip-hd-icon">💰</span><span>Pig Butchering & Crypto Scams</span><span class="chev">▼</span></div>
+      <div class="tip-body">
+        <p>"Pig butchering" is a long-con romance scam where the scammer builds real emotional trust over weeks before introducing a crypto "investment." They "fatten" you with affection before "slaughtering" your savings.</p>
+        <p>Red flags: They casually mention crypto profits. They offer to help you invest "risk-free." They show you a trading platform you've never heard of — these apps are fake, designed to show phony gains until you try to withdraw.</p>
+        <p>Rule: if anyone you've never met in person mentions cryptocurrency or investing — end contact immediately and report to <strong>reportfraud.ftc.gov</strong>.</p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ PAGE: SETTINGS -->
+<div class="page" id="pg-settings">
+  <div class="ph">
+    <div class="ph-title">Settings ⚙️</div>
+    <div class="ph-sub">account & preferences</div>
+  </div>
+  <div class="sb">
+
+    <div class="card" style="margin-bottom:12px">
+      <div class="cb" style="text-align:center;padding:22px 16px">
+        <div style="font-size:38px;margin-bottom:8px">🔓</div>
+        <div style="font-size:15px;font-weight:900;margin-bottom:3px" id="planLabel">Free Plan</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-bottom:14px" id="planSub">3 free analyses included</div>
+        <button class="btn-p" onclick="openPW()" style="max-width:220px;margin:0 auto;font-size:13px;padding:12px">Upgrade to Pro 🎣</button>
+      </div>
+    </div>
+
+    <div class="set-section">Privacy</div>
+
+    <div class="set-row">
+      <div><div class="set-label">Save History</div><div class="set-sub">Store results on this device</div></div>
+      <label class="tog"><input type="checkbox" id="togHist" checked onchange="saveSets()"><div class="tog-track"></div><div class="tog-thumb"></div></label>
+    </div>
+
+    <div class="set-row">
+      <div><div class="set-label">Auto-Clear After 30 Days</div><div class="set-sub">Delete old analyses automatically</div></div>
+      <label class="tog"><input type="checkbox" id="togAC" onchange="saveSets()"><div class="tog-track"></div><div class="tog-thumb"></div></label>
+    </div>
+
+    <div class="set-section">Data</div>
+
+    <div class="set-row" onclick="clearHist()">
+      <div><div class="set-label" style="color:var(--rose)">Clear All History</div><div class="set-sub">Permanently delete saved analyses</div></div>
+      <span class="set-arr">›</span>
+    </div>
+
+    <div class="set-row" onclick="resetUsage()">
+      <div><div class="set-label">Reset Free Usage Counter</div><div class="set-sub">For testing</div></div>
+      <span class="set-arr">›</span>
+    </div>
+
+    <div class="set-section">About</div>
+
+    <div class="set-row"><div><div class="set-label">Version</div><div class="set-sub">CatchFish PWA v1.0.0</div></div></div>
+    <div class="set-row" onclick="toast('Opening Privacy Policy…')"><div><div class="set-label">Privacy Policy</div></div><span class="set-arr">›</span></div>
+    <div class="set-row" onclick="toast('Opening Terms of Service…')"><div><div class="set-label">Terms of Service</div></div><span class="set-arr">›</span></div>
+    <div class="set-row" onclick="toast('Opening support…')"><div><div class="set-label">Contact Support</div></div><span class="set-arr">›</span></div>
+
+    <div class="disc">
+      <p><strong>⚠ Disclaimer:</strong> CatchFish provides AI-generated risk indicators for informational purposes only. Results are not definitive verdicts. The developers accept no liability for any decisions made based on this analysis. Never use results to harass or discriminate against any individual.</p>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ BOTTOM NAV -->
+<nav class="nav">
+  <div class="nav-btn on" onclick="nav('analyze')" id="nv-analyze"><span class="nav-btn-icon">🔍</span><span class="nav-btn-label">ANALYZE</span></div>
+  <div class="nav-btn" onclick="nav('history')" id="nv-history"><span class="nav-btn-icon">📋</span><span class="nav-btn-label">HISTORY</span></div>
+  <div class="nav-btn" onclick="nav('learn')" id="nv-learn"><span class="nav-btn-icon">📚</span><span class="nav-btn-label">LEARN</span></div>
+  <div class="nav-btn" onclick="nav('settings')" id="nv-settings"><span class="nav-btn-icon">⚙️</span><span class="nav-btn-label">SETTINGS</span></div>
+</nav>
+
+<script>
+// ════════════════════ CONFIG
+const FREE_LIMIT = 3;
+const RESET_HOURS = 24;
+
+// ════════════════════ STATE HELPERS
+const S = {
+  get:(k,fb)=>{try{const v=localStorage.getItem(k);return v===null?fb:JSON.parse(v)}catch{return fb}},
+  set:(k,v)=>localStorage.setItem(k,JSON.stringify(v)),
+  usage:()=>S.get('cf_usage',0),
+  isPro:()=>S.get('cf_pro',false),
+  lastReset:()=>S.get('cf_reset', Date.now()),
+  history:()=>S.get('cf_hist',[]),
+  settings:()=>S.get('cf_sets',{saveHist:true,autoClear:false})
+};
+
+// ════════════════════ DAILY RESET LOGIC
+function checkDailyReset(){
+  if(S.isPro()) return;
+  const last = S.lastReset();
+  const hrs = (Date.now()-last)/(1000*60*60);
+  if(hrs>=RESET_HOURS){
+    S.set('cf_usage',0);
+    S.set('cf_reset',Date.now());
+  }
+}
+
+function msToReset(){
+  const last = S.lastReset();
+  const ms = (RESET_HOURS*60*60*1000)-(Date.now()-last);
+  const h = Math.floor(ms/3600000);
+  const m = Math.floor((ms%3600000)/60000);
+  return `Resets in ${h}h ${m}m`;
+}
+
+// ════════════════════ ONBOARDING
+function obDone(){
+  S.set('cf_ob',true);
+  document.getElementById('ob').classList.add('gone');
+}
+window.addEventListener('load',()=>{
+  if(S.get('cf_ob',false)) document.getElementById('ob').classList.add('gone');
+  checkDailyReset();
+  updateUsageUI();
+  renderHist();
+  loadSets();
+  if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+});
+
+// ════════════════════ NAVIGATION
+let curPage='analyze';
+function nav(p){
+  document.querySelectorAll('.page').forEach(el=>el.classList.remove('on'));
+  document.querySelectorAll('.nav-btn').forEach(el=>el.classList.remove('on'));
+  document.getElementById(`pg-${p}`).classList.add('on');
+  document.getElementById(`nv-${p}`)?.classList.add('on');
+  curPage=p;
+  if(p==='history') renderHist();
+}
+
+// ════════════════════ IMAGE UPLOAD
+let imgB64=null;
+const imgIn=document.getElementById('imgIn');
+const upZone=document.getElementById('upZone');
+const prevWrap=document.getElementById('prevWrap');
+const prevImg=document.getElementById('prevImg');
+
+imgIn.addEventListener('change',e=>{
+  const f=e.target.files[0];
+  if(!f) return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    imgB64=ev.target.result.split(',')[1];
+    prevImg.src=ev.target.result;
+    upZone.style.display='none';
+    prevWrap.style.display='block';
+  };
+  r.readAsDataURL(f);
+});
+
+function clearImg(){
+  imgB64=null;imgIn.value='';prevImg.src='';
+  prevWrap.style.display='none';upZone.style.display='block';
+}
+
+// ════════════════════ USAGE UI
+function updateUsageUI(){
+  const used=S.usage(), isPro=S.isPro();
+  const strip=document.getElementById('uStrip');
+  if(isPro){strip.style.display='none';return;}
+  const rem=Math.max(0,FREE_LIMIT-used);
+  const pct=(rem/FREE_LIMIT)*100;
+  document.getElementById('uCount').textContent=`${rem} remaining today`;
+  const fill=document.getElementById('uFill');
+  fill.style.width=pct+'%';
+  fill.className='usage-fill'+(pct===0?' d':pct<=34?' w':'');
+  document.getElementById('uReset').textContent=rem>0?'Resets daily at midnight':msToReset();
+}
+
+// ════════════════════ ANALYSIS
+let curResult=null;
+async function runAnalysis(){
+  const bio=document.getElementById('bio').value.trim();
+  const msgs=document.getElementById('msgs').value.trim();
+  if(!bio&&!imgB64){toast('⚠ Add a photo or bio to analyze');return;}
+
+  checkDailyReset();
+  const used=S.usage(),isPro=S.isPro();
+  if(!isPro&&used>=FREE_LIMIT){openPW();return;}
+
+  showLoad();
+
+  // Step animation
+  const rows=document.querySelectorAll('.ls-row');
+  let si=0;
+  const st=setInterval(()=>{
+    rows.forEach((r,i)=>{
+      r.classList.remove('cur','done');
+      if(i<si)r.classList.add('done');
+      if(i===si)r.classList.add('cur');
+    });
+    si++;
+    if(si>rows.length)clearInterval(st);
+  },2100);
+
+  const age=document.getElementById('age').value.trim();
+  const loc=document.getElementById('loc').value.trim();
+  const job=document.getElementById('job').value.trim();
+  const plat=document.getElementById('plat').value.trim();
+
+  const profileInfo=`
+Platform: ${plat||'Unknown'}
+Age: ${age||'Not given'}
+Location: ${loc||'Not given'}
+Occupation: ${job||'Not given'}
+Bio: ${bio||'Not given'}
+${msgs?`Messages from them: ${msgs}`:''}
+Photo provided: ${imgB64?'Yes':'No'}`.trim();
+
+  const sys=`You are CatchFish, an expert dating profile authenticity analyzer. Analyze for AI-generated photos, catfishing, romance scams, bots, and misrepresentation.
+
+Return ONLY valid JSON with this exact structure — no markdown, no extra text:
+{
+  "score": <integer 0-100, 100=very likely real>,
+  "verdict": "<short verdict e.g. 'Likely Authentic' or 'High Risk — Possible Scam'>",
+  "summary": "<2-3 sentences, plain language for a general audience>",
+  "checks": [
+    {"name":"Image Authenticity","status":"pass|warn|fail|skip","detail":"<1-2 sentence finding>"},
+    {"name":"Bio Authenticity","status":"pass|warn|fail|skip","detail":"<finding>"},
+    {"name":"Scam Patterns","status":"pass|warn|fail|skip","detail":"<finding>"},
+    {"name":"Profile Consistency","status":"pass|warn|fail|skip","detail":"<finding>"},
+    {"name":"Language Analysis","status":"pass|warn|fail|skip","detail":"<finding>"},
+    {"name":"Bot Signals","status":"pass|warn|fail|skip","detail":"<finding>"}
+  ],
+  "detailed_analysis": "<4-5 paragraphs thorough analysis in plain English>",
+  "red_flags": ["<flag>"],
+  "green_flags": ["<positive sign>"]
+}
+
+Always use probabilistic language. Be empathetic. If little info given, score 40-60 and note low confidence.`;
+
+  try{
+    const content=[];
+    if(imgB64) content.push({type:'image',source:{type:'base64',media_type:'image/jpeg',data:imgB64}});
+    content.push({type:'text',text:`Analyze this dating profile:\n\n${profileInfo}`});
+
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:1000,
+        system:sys,
+        messages:[{role:'user',content}]
+      })
+    });
+
+    clearInterval(st);
+    rows.forEach(r=>r.classList.add('done'));
+
+    const data=await resp.json();
+    const raw=data.content.map(b=>b.text||'').join('');
+    const result=JSON.parse(raw.replace(/```json|```/g,'').trim());
+
+    // Update usage
+    if(!isPro){S.set('cf_usage',used+1);updateUsageUI();}
+
+    // Save history
+    const sets=S.settings();
+    if(sets.saveHist!==false){
+      const entry={id:Date.now(),date:new Date().toISOString(),score:result.score,verdict:result.verdict,platform:plat||'Unknown',result};
+      const hist=S.history();hist.unshift(entry);
+      if(hist.length>50)hist.pop();
+      S.set('cf_hist',hist);
+    }
+
+    curResult=result;
+    hideLoad();
+    showResults(result);
+
+  }catch(e){
+    clearInterval(st);
+    hideLoad();
+    toast('❌ Analysis failed — check your connection');
+    console.error(e);
+  }
+}
+
+// ════════════════════ RESULTS
+function tier(s){return s>=65?'hi':s>=35?'md':'lo'}
+
+function showResults(r){
+  const t=tier(r.score);
+  const icons={pass:'✅',warn:'⚠️',fail:'❌',skip:'➖'};
+
+  const checksHTML=(r.checks||[]).map(c=>`
+    <div class="check-row">
+      <span class="check-icon">${icons[c.status]||'➖'}</span>
+      <div class="check-info">
+        <div class="check-name">${c.name}</div>
+        <div class="check-detail">${c.detail}</div>
+      </div>
+      <span class="check-pill ${c.status}">${c.status.toUpperCase()}</span>
+    </div>`).join('');
+
+  const redHTML=(r.red_flags||[]).length?`
+    <div class="card">
+      <div class="card-hd"><span class="card-hd-icon">🚩</span><h3>Red Flags</h3></div>
+      <div class="cb"><ul class="flag-list">
+        ${(r.red_flags||[]).map(f=>`<li class="flag-row"><span class="flag-em">🚩</span><span class="flag-txt">${f}</span></li>`).join('')}
+      </ul></div>
+    </div>`:''  ;
+
+  const greenHTML=(r.green_flags||[]).length?`
+    <div class="card">
+      <div class="card-hd"><span class="card-hd-icon">✅</span><h3>Positive Signals</h3></div>
+      <div class="cb"><ul class="flag-list">
+        ${(r.green_flags||[]).map(f=>`<li class="flag-row"><span class="flag-em">✅</span><span class="flag-txt">${f}</span></li>`).join('')}
+      </ul></div>
+    </div>`:''  ;
+
+  document.getElementById('resDate').textContent=new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
+
+  document.getElementById('resBody').innerHTML=`
+    <div class="score-hero ${t}">
+      <div class="score-tag">Authenticity Score</div>
+      <div class="score-num ${t}" id="animNum">0</div>
+      <div class="score-track"><div class="score-fill ${t}" id="sFill"></div></div>
+      <div class="score-verdict">${r.verdict}</div>
+      <div class="score-summary">${r.summary}</div>
+    </div>
+
+    <div class="act-row">
+      <button class="btn-s" onclick="shareResult()">📤 Share Card</button>
+      <button class="btn-g" onclick="nav('analyze')">🔍 New Analysis</button>
+    </div>
+
+    <div class="checks">${checksHTML}</div>
+    ${redHTML}
+    ${greenHTML}
+
+    <div class="card">
+      <div class="card-hd"><span class="card-hd-icon">📋</span><h3>Full Analysis</h3></div>
+      <div class="cb"><div class="analysis-txt">${r.detailed_analysis||''}</div></div>
+    </div>
+
+    <div class="disc">
+      <p><strong>⚠ Remember:</strong> This is an AI risk assessment, not a verdict. Real people sometimes score lower due to unusual bios or edited photos. Never use results to harass anyone. Stay safe and trust your instincts.</p>
+    </div>
+  `;
+
+  nav('results');
+
+  setTimeout(()=>{
+    document.getElementById('sFill').style.width=r.score+'%';
+    let n=0;
+    const iv=setInterval(()=>{
+      n=Math.min(n+Math.ceil(r.score/28),r.score);
+      const el=document.getElementById('animNum');
+      if(el)el.textContent=n;
+      if(n>=r.score)clearInterval(iv);
+    },32);
+  },150);
+}
+
+// ════════════════════ SHARE AS IMAGE CARD
+async function shareResult(){
+  if(!curResult){return;}
+  const r=curResult;
+  const t=tier(r.score);
+
+  // Build a text-based share card (canvas API alternative using html2canvas isn't available,
+  // so we use native share with rich text, or copy a formatted summary)
+  const dotMap={pass:'●',warn:'◐',fail:'○',skip:'—'};
+  const checks=(r.checks||[]).map(c=>`${dotMap[c.status]||'—'} ${c.name}: ${c.status.toUpperCase()}`).join('\n');
+  const flags=(r.red_flags||[]).map(f=>`🚩 ${f}`).join('\n');
+
+  const cardText=
+`🎣 CatchFish Profile Analysis
+${'─'.repeat(30)}
+AUTHENTICITY SCORE: ${r.score}/100
+VERDICT: ${r.verdict}
+
+${r.summary}
+
+CHECKS:
+${checks}
+${flags?`\nRED FLAGS:\n${flags}`:''}
+${'─'.repeat(30)}
+⚠ AI risk indicator only — not a verdict
+Analyzed with CatchFish`;
+
+  if(navigator.share){
+    try{await navigator.share({title:`CatchFish — Score ${r.score}/100`,text:cardText});}
+    catch(e){}
+  } else {
+    try{await navigator.clipboard.writeText(cardText);toast('📋 Result card copied to clipboard!');}
+    catch(e){toast('📋 Copy failed — try again');}
+  }
+}
+
+// ════════════════════ HISTORY
+function renderHist(){
+  const hist=S.history();
+  const body=document.getElementById('histBody');
+  if(!hist.length){
+    body.innerHTML=`<div class="empty"><span class="empty-icon">📭</span><h3 class="empty-title">No analyses yet</h3><p class="empty-sub">Run your first profile analysis and it'll be saved here for easy review.</p></div>`;
+    return;
+  }
+  body.innerHTML=hist.map(e=>{
+    const t=tier(e.score);
+    const d=new Date(e.date).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    return`<div class="hist-item" onclick="loadHist(${e.id})">
+      <div class="hist-score ${t}">${e.score}</div>
+      <div class="hist-info">
+        <div class="hist-verdict">${e.verdict}</div>
+        <div class="hist-meta">${e.platform} · ${d}</div>
+      </div>
+      <span class="hist-arr">›</span>
+    </div>`;
+  }).join('');
+}
+
+function loadHist(id){
+  const e=S.history().find(h=>h.id===id);
+  if(!e)return;
+  curResult=e.result;
+  showResults(e.result);
+  document.getElementById('resDate').textContent=new Date(e.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+}
+
+// ════════════════════ TIPS
+function toggleTip(card){card.classList.toggle('open')}
+
+// ════════════════════ SETTINGS
+function loadSets(){
+  const s=S.settings();
+  document.getElementById('togHist').checked=s.saveHist!==false;
+  document.getElementById('togAC').checked=s.autoClear===true;
+}
+function saveSets(){
+  S.set('cf_sets',{saveHist:document.getElementById('togHist').checked,autoClear:document.getElementById('togAC').checked});
+  toast('Settings saved');
+}
+function clearHist(){
+  if(!confirm('Clear all history? This cannot be undone.'))return;
+  S.set('cf_hist',[]);renderHist();toast('History cleared');
+}
+function resetUsage(){S.set('cf_usage',0);S.set('cf_reset',Date.now());updateUsageUI();toast('Usage counter reset');}
+
+// ════════════════════ PAYWALL
+let selPlanId='sub-monthly';
+function openPW(){document.getElementById('pwModal').classList.add('on')}
+function closePW(){document.getElementById('pwModal').classList.remove('on')}
+function selPlan(el,id){
+  selPlanId=id;
+  document.querySelectorAll('.plan-opt').forEach(o=>o.classList.remove('sel'));
+  el.classList.add('sel');
+}
+function doUpgrade(){
+  // TODO: Integrate Stripe / Apple IAP / Google Play Billing here
+  S.set('cf_pro',true);
+  closePW();
+  updateUsageUI();
+  toast('✨ Welcome to CatchFish Pro!');
+  document.getElementById('planLabel').textContent='Pro Plan 🎣';
+  document.getElementById('planSub').textContent='Unlimited analyses';
+}
+
+// ════════════════════ LOADING
+function showLoad(){
+  document.getElementById('loadOv').classList.add('on');
+  document.getElementById('analyzeBtn').disabled=true;
+  document.querySelectorAll('.ls-row').forEach(r=>r.classList.remove('cur','done'));
+}
+function hideLoad(){
+  document.getElementById('loadOv').classList.remove('on');
+  document.getElementById('analyzeBtn').disabled=false;
+}
+
+// ════════════════════ TOAST
+let toastT;
+function toast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg;el.classList.add('on');
+  clearTimeout(toastT);toastT=setTimeout(()=>el.classList.remove('on'),3200);
+}
+
+// ════════════════════ INSTALL PROMPT
+let dProm;
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault();dProm=e;
+  setTimeout(()=>toast('📲 Add CatchFish to your home screen!'),6000);
+});
+</script>
+</body>
+</html>
