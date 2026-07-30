@@ -1149,12 +1149,10 @@ Always use probabilistic language. Be empathetic. If little info given, score 40
     if(imgB64) content.push({type:'image',source:{type:'base64',media_type:'image/jpeg',data:imgB64}});
     content.push({type:'text',text:`Analyze this dating profile:\n\n${profileInfo}`});
 
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+    const resp=await fetch('/api/analyze',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',
-        max_tokens:1000,
         system:sys,
         messages:[{role:'user',content}]
       })
