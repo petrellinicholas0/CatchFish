@@ -1184,7 +1184,7 @@ Always use probabilistic language. Be empathetic. If little info given, score 40
   }catch(e){
     clearInterval(st);
     hideLoad();
-    toast('❌ Analysis failed — check your connection');
+    toast('❌ Error: ' + (e && e.message ? e.message : String(e)));
     console.error(e);
   }
 }
