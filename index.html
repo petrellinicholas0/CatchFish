@@ -1171,6 +1171,12 @@ Always use probabilistic language. Be empathetic. If little info given, score 40
     rows.forEach(r=>r.classList.add('done'));
 
     const data=await resp.json();
+    if(!resp.ok || data.error){
+      throw new Error(data.error || data.error?.message || ('API error: '+resp.status));
+    }
+    if(!data.content){
+      throw new Error('Unexpected response: '+JSON.stringify(data).slice(0,200));
+    }
     const raw=data.content.map(b=>b.text||'').join('');
     const result=JSON.parse(raw.replace(/```json|```/g,'').trim());
 
