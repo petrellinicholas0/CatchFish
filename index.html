@@ -1064,10 +1064,24 @@ imgIn.addEventListener('change',e=>{
   if(!f) return;
   const r=new FileReader();
   r.onload=ev=>{
-    imgB64=ev.target.result.split(',')[1];
-    prevImg.src=ev.target.result;
-    upZone.style.display='none';
-    prevWrap.style.display='block';
+    const img=new Image();
+    img.onload=()=>{
+      const maxDim=1024;
+      let w=img.width,h=img.height;
+      if(w>maxDim||h>maxDim){
+        if(w>h){h=Math.round(h*maxDim/w);w=maxDim;}
+        else{w=Math.round(w*maxDim/h);h=maxDim;}
+      }
+      const canvas=document.createElement('canvas');
+      canvas.width=w;canvas.height=h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      const compressed=canvas.toDataURL('image/jpeg',0.8);
+      imgB64=compressed.split(',')[1];
+      prevImg.src=compressed;
+      upZone.style.display='none';
+      prevWrap.style.display='block';
+    };
+    img.src=ev.target.result;
   };
   r.readAsDataURL(f);
 });
