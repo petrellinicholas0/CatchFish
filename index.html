@@ -1236,7 +1236,72 @@ Always use probabilistic language. Be empathetic. If little info given, score 40
 }
 
 // ════════════════════ RESULTS
-function tier(s){return s>=65?'hi':s>=35?'md':'lo'}
+async function runEmailAnalysis(){
+  const sender=document.getElementById('emailSender').value.trim();
+  const emailText=document.getElementById('emailText').value.trim();
+  if(!emailText){toast('⚠️ Paste an email to analyze');return;}
+
+  checkDailyReset();
+  const used=S.usage(),isPro=S.isPro();
+  if(!isPro&&used>=FREE_LIMIT){openPW();return;}
+
+  const btn=document.querySelector('#pg-email .btn-p');
+  btn.disabled=true;btn.textContent='Analyzing...';
+
+  const sys=`You are an email security analyst. Analyze this email for phishing, scam, and social-engineering indicators.
+
+Return ONLY valid JSON with this exact structure — no markdown, no extra text:
+{
+  "score": <integer 0-100, 100=very likely safe>,
+  "verdict": "<short verdict e.g. 'Likely Safe' or 'High Risk — Likely Phishing'>",
+  "summary": "<2-3 sentences, plain language>",
+  "red_flags": ["<flag>"],
+  "green_flags": ["<positive sign>"]
+}
+Always use probabilistic language.`;
+
+  const content=`Sender: ${sender||'Not given'}\n\nEmail:\n${emailText}`;
+
+  try{
+    const resp=await fetch('/api/analyze',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({system:sys,messages:[{role:'user',content}]})
+    });
+    const data=await resp.json();
+    if(!resp.ok||data.error){throw new Error(data.error||('API error: '+resp.status));}
+    const raw=data.content.map(b=>b.text||'').join('');
+    const result=JSON.parse(raw.replace(/```json|```/g,'').trim());
+
+    if(!isPro){S.set('cf_usage',used+1);updateUsageUI();}
+
+    renderEmailResult(result);
+  }catch(e){
+    toast('❌ Error: '+(e&&e.message?e.message:'Something went wrong'));
+    console.error(e);
+  }finally{
+    btn.disabled=false;btn.textContent='Analyze Email';
+  }
+}
+
+function renderEmailResult(r){
+  const t=tier(r.score);
+  const redHTML=(r.red_flags||[]).length?`<div class="card"><div class="card-hd">🚩 Red Flags</div><div class="cb"><ul class="flag-list">${(r.red_flags||[]).map(f=>`<li>${f}</li>`).join('')}</ul></div></div>`:'';
+  const greenHTML=(r.green_flags||[]).length?`<div class="card"><div class="card-hd">✅ Green Flags</div><div class="cb"><ul class="flag-list">${(r.green_flags||[]).map(f=>`<li>${f}</li>`).join('')}</ul></div></div>`:'';
+
+  document.getElementById('emailResult').innerHTML=`
+    <div class="score-hero ${t}">
+      <div class="score-tag">Safety Score</div>
+      <div class="score-num">${r.score}</div>
+      <div class="score-verdict">${r.verdict}</div>
+      <div class="score-summary">${r.summary}</div>
+    </div>
+    ${redHTML}
+    ${greenHTML}
+  `;
+}
+  
+  function tier(s){return s>=65?'hi':s>=35?'md':'lo'}
 
 function showResults(r){
   const t=tier(r.score);
