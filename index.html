@@ -990,7 +990,40 @@ textarea{min-height:84px;line-height:1.55}
     </div>
   </div>
   </div>
+<div class="page" id="pg-paper">
+  <div class="ph">
+    <div class="ph-title">Paper Check 🎓</div>
+    <div class="ph-sub">Assignment fit & AI-likelihood report</div>
+  </div>
+  <div class="sb">
+    <div class="card">
+      <div class="cb">
+        <div class="r2">
+          <div class="fg"><label>School / University</label><input type="text" id="paperSchool" placeholder="e.g. State University"></div>
+          <div class="fg"><label>Class / Course</label><input type="text" id="paperCourse" placeholder="e.g. ECON 201"></div>
+        </div>
+        <div class="fg">
+          <label>Textbook <span style="color:var(--muted2)">(optional)</span></label>
+          <input type="text" id="paperTextbook" placeholder="e.g. Mankiw, Principles of Economics, 9th ed.">
+        </div>
+        <div class="fg">
+          <label>Assignment Prompt</label>
+          <textarea id="paperAssignment" rows="4" placeholder="Paste the assignment instructions..."></textarea>
+        </div>
+        <div class="fg">
+          <label>Paper Text</label>
+          <textarea id="paperText" rows="10" placeholder="Paste the full paper here..."></textarea>
+        </div>
+        <button class="btn-p" onclick="runPaperAnalysis()">🎓 Check Paper</button>
+        <div id="paperResult"></div>
 
+        <div class="disc" style="margin-top:12px">
+          <p><strong>⚠ Disclaimer:</strong> This report highlights patterns worth a follow-up conversation with the student — it is not proof of AI use or academic dishonesty. Textbook-specific observations may be incomplete or wrong; verify before acting.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 <!-- ═══════════════════════════════════ BOTTOM NAV -->
 <nav class="nav">
   <div class="nav-btn on" onclick="nav('analyze')" id="nv-analyze"><span class="nav-btn-icon">🔍</span><span class="nav-btn-label">ANALYZE</span></div>
