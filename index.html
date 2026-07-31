@@ -974,6 +974,22 @@ textarea{min-height:84px;line-height:1.55}
 
   </div>
 </div>
+  <div class="page" id="pg-email">
+  <div class="ph">
+    <div class="ph-title">Email Check ✉️</div>
+    <div class="ph-sub">Spot phishing & scam emails</div>
+  </div>
+  <div class="sb">
+    <div class="card">
+      <label>Sender address (optional)</label>
+      <input type="text" id="emailSender" placeholder="e.g. support@amaz0n-security.com">
+      <label>Paste the email text</label>
+      <textarea id="emailText" rows="10" placeholder="Paste the full email here..."></textarea>
+      <button class="btn-p" onclick="runEmailAnalysis()">Analyze Email</button>
+      <div id="emailResult"></div>
+    </div>
+  </div>
+  </div>
 
 <!-- ═══════════════════════════════════ BOTTOM NAV -->
 <nav class="nav">
