@@ -1317,7 +1317,119 @@ Always use probabilistic language.`;
     btn.disabled=false;btn.textContent='Analyze Email';
   }
 }
+async function runPaperAnalysis(){
+  const school=document.getElementById('paperSchool').value.trim();
+  const course=document.getElementById('paperCourse').value.trim();
+  const textbook=document.getElementById('paperTextbook').value.trim();
+  const assignment=document.getElementById('paperAssignment').value.trim();
+  const paperText=document.getElementById('paperText').value.trim();
+  if(!paperText){toast('⚠️ Paste the paper to analyze');return;}
 
+  checkDailyReset();
+  const used=S.usage(),isPro=S.isPro();
+  if(!isPro&&used>=FREE_LIMIT){openPW();return;}
+
+  const btn=document.querySelector('#pg-paper .btn-p');
+  btn.disabled=true;btn.textContent='Analyzing...';
+
+  const sys=`You are an academic integrity assistant helping a college professor evaluate whether a submitted paper is consistent with the assignment, course, and textbook it was supposedly written for, and whether it shows signs of being AI-generated.
+
+Analyze across five dimensions. Be specific and cite short excerpts (not full sentences) from the paper to support each observation. Do not fabricate certainty — if something is unclear or unverifiable, say so explicitly rather than guessing.
+
+1. ASSIGNMENT FIT — Does the paper actually answer what the assignment asked? Note unaddressed parts of the prompt.
+2. COURSE/TEXTBOOK ALIGNMENT — If you recognize the stated textbook, compare terminology/frameworks against how that text typically presents the topic, but flag mismatches as "worth verifying," never as proven fact. If you do NOT confidently recognize the textbook, say so directly and fall back to general subject/course-level consistency. Every claim here must include a confidence caveat.
+3. LEVEL/VOICE CONSISTENCY — Does vocabulary and reasoning depth match the course level? Flag abrupt internal shifts in sophistication.
+4. AI-LIKELIHOOD INDICATORS — Traditional AI-generation signals (generic phrasing, repetitive structure, lack of specific detail). Label explicitly as supplementary, not conclusive.
+5. OVERALL VERDICT — 3-5 plain-language sentences a professor could act on: what's worth a follow-up conversation, and what is NOT strong enough evidence alone.
+
+Respond ONLY with valid JSON, no markdown, no extra text:
+{
+  "assignment_fit": {"score": <0-100>, "summary": "<string>", "unaddressed_parts": ["<string>"]},
+  "textbook_alignment": {"textbook_recognized": true/false, "confidence_note": "<string>", "findings": ["<string>"]},
+  "level_voice_consistency": {"score": <0-100>, "findings": ["<string>"], "notable_shifts": ["<string>"]},
+  "ai_likelihood_indicators": {"score": <0-100>, "findings": ["<string>"]},
+  "overall_verdict": "<string>"
+}`;
+
+  const content=`School/University: ${school||'Not given'}
+Class/Course: ${course||'Not given'}
+Textbook: ${textbook||'Not given'}
+
+Assignment Prompt:
+${assignment||'Not given'}
+
+Paper:
+${paperText}`;
+
+  try{
+    const resp=await fetch('/api/analyze',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({system:sys,messages:[{role:'user',content}]})
+    });
+    const data=await resp.json();
+    if(!resp.ok||data.error){throw new Error(data.error||('API error: '+resp.status));}
+    const raw=data.content.map(b=>b.text||'').join('');
+    const result=JSON.parse(raw.replace(/```json|```/g,'').trim());
+
+    if(!isPro){S.set('cf_usage',used+1);updateUsageUI();}
+
+    renderPaperResult(result);
+  }catch(e){
+    toast('❌ Error: '+(e&&e.message?e.message:'Something went wrong'));
+    console.error(e);
+  }finally{
+    btn.disabled=false;btn.textContent='🎓 Check Paper';
+  }
+}
+
+function renderPaperResult(r){
+  const af=r.assignment_fit||{}, ta=r.textbook_alignment||{}, lv=r.level_voice_consistency||{}, ai=r.ai_likelihood_indicators||{};
+  const avgScore=Math.round(((af.score||0)+(lv.score||0)+(100-(ai.score||0)))/3);
+  const t=tier(avgScore);
+
+  const listHTML=(arr)=>(arr||[]).map(f=>`<li class="flag-row"><span class="flag-em">•</span><span class="flag-txt">${f}</span></li>`).join('');
+
+  document.getElementById('paperResult').innerHTML=`
+    <div class="score-hero ${t}">
+      <div class="score-tag">Overall Confidence Score</div>
+      <div class="score-num ${t}">${avgScore}</div>
+      <div class="score-summary">${r.overall_verdict||''}</div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd"><span class="card-hd-icon">📝</span><h3>Assignment Fit</h3><span class="card-hd-tag">${af.score ?? '—'}/100</span></div>
+      <div class="cb">
+        <div class="analysis-txt">${af.summary||''}</div>
+        ${af.unaddressed_parts&&af.unaddressed_parts.length?`<ul class="flag-list" style="margin-top:8px">${listHTML(af.unaddressed_parts)}</ul>`:''}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd"><span class="card-hd-icon">📚</span><h3>Textbook Alignment</h3><span class="card-hd-tag">${ta.textbook_recognized?'Recognized':'Not recognized'}</span></div>
+      <div class="cb">
+        <div class="analysis-txt" style="color:var(--muted);margin-bottom:8px">${ta.confidence_note||''}</div>
+        <ul class="flag-list">${listHTML(ta.findings)}</ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd"><span class="card-hd-icon">🎯</span><h3>Level & Voice Consistency</h3><span class="card-hd-tag">${lv.score ?? '—'}/100</span></div>
+      <div class="cb">
+        <ul class="flag-list">${listHTML(lv.findings)}</ul>
+        ${lv.notable_shifts&&lv.notable_shifts.length?`<div class="analysis-txt" style="margin-top:8px;color:var(--muted)"><strong>Notable shifts:</strong></div><ul class="flag-list">${listHTML(lv.notable_shifts)}</ul>`:''}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd"><span class="card-hd-icon">🤖</span><h3>AI-Likelihood Indicators</h3><span class="card-hd-tag">${ai.score ?? '—'}/100</span></div>
+      <div class="cb">
+        <div class="analysis-txt" style="color:var(--muted);margin-bottom:8px">Supplementary signal — not proof of AI generation.</div>
+        <ul class="flag-list">${listHTML(ai.findings)}</ul>
+      </div>
+    </div>
+  `;
+}
 function renderEmailResult(r){
   const t=tier(r.score);
   const redHTML=(r.red_flags||[]).length?`<div class="card"><div class="card-hd">🚩 Red Flags</div><div class="cb"><ul class="flag-list">${(r.red_flags||[]).map(f=>`<li>${f}</li>`).join('')}</ul></div></div>`:'';
