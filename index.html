@@ -214,7 +214,7 @@ label{
   font-size:9px;letter-spacing:0.12em;text-transform:uppercase;
   color:var(--muted);margin-bottom:6px;
 }
-input[type=text],textarea{
+input[type=text],input[type=email],textarea{
   width:100%;background:var(--paper2);
   border:1.5px solid var(--border);
   border-radius:var(--r-sm);
@@ -680,7 +680,7 @@ textarea{min-height:84px;line-height:1.55}
     <div class="modal-title">Unlock CatchFish 🎣</div>
     <p class="modal-sub">You've used your free analyses.<br>Upgrade for unlimited protection.</p>
 
-    <div class="plan-opt sel" onclick="selPlan(this,'sub-monthly')" id="planM">
+    <div class="plan-opt sel" onclick="selPlan(this,'monthly')" id="planM">
       <div class="plan-radio"></div>
       <div class="plan-info">
         <div class="plan-name">Monthly</div>
@@ -689,7 +689,7 @@ textarea{min-height:84px;line-height:1.55}
       <span class="plan-badge hot">POPULAR</span>
     </div>
 
-    <div class="plan-opt" onclick="selPlan(this,'sub-yearly')" id="planY">
+    <div class="plan-opt" onclick="selPlan(this,'annual')" id="planY">
       <div class="plan-radio"></div>
       <div class="plan-info">
         <div class="plan-name">Annual</div>
@@ -713,6 +713,11 @@ textarea{min-height:84px;line-height:1.55}
       <li class="modal-feat">Shareable result cards</li>
       <li class="modal-feat">Advanced scam phrase database</li>
     </ul>
+
+    <div class="fg">
+      <label>Email</label>
+      <input type="email" id="pwEmail" placeholder="you@example.com" autocomplete="email">
+    </div>
 
     <button class="btn-p" onclick="doUpgrade()">Continue</button>
     <button class="btn-g" onclick="closePW()" style="width:100%;margin-top:8px">Maybe later</button>
@@ -1050,6 +1055,16 @@ const S = {
   settings:()=>S.get('cf_sets',{saveHist:true,autoClear:false})
 };
 
+// ════════════════════ ANONYMOUS USER ID
+function getUid(){
+  let uid = S.get('cf_uid', null);
+  if(!uid){
+    uid = (crypto.randomUUID ? crypto.randomUUID() : 'uid-'+Date.now()+'-'+Math.random().toString(36).slice(2));
+    S.set('cf_uid', uid);
+  }
+  return uid;
+}
+
 // ════════════════════ DAILY RESET LOGIC
 function checkDailyReset(){
   if(S.isPro()) return;
@@ -1080,6 +1095,17 @@ window.addEventListener('load',()=>{
   updateUsageUI();
   renderHist();
   loadSets();
+  const checkoutStatus = new URLSearchParams(location.search).get('checkout');
+  if(checkoutStatus==='success'){
+    S.set('cf_pro',true);
+    updateUsageUI();
+    document.getElementById('planLabel').textContent='Pro Plan 🎣';
+    document.getElementById('planSub').textContent='Unlimited analyses';
+    toast('✨ Welcome to CatchFish Pro!');
+  }else if(checkoutStatus==='cancel'){
+    toast('Checkout cancelled');
+  }
+  if(checkoutStatus) history.replaceState({},'',location.pathname);
   if('serviceWorker' in navigator){
     navigator.serviceWorker.getRegistrations().then(regs=>{
       regs.forEach(r=>r.unregister());
@@ -1609,7 +1635,7 @@ function clearHist(){
 function resetUsage(){S.set('cf_usage',0);S.set('cf_reset',Date.now());updateUsageUI();toast('Usage counter reset');}
 
 // ════════════════════ PAYWALL
-let selPlanId='sub-monthly';
+let selPlanId='monthly';
 function openPW(){document.getElementById('pwModal').classList.add('on')}
 function closePW(){document.getElementById('pwModal').classList.remove('on')}
 function selPlan(el,id){
@@ -1617,14 +1643,34 @@ function selPlan(el,id){
   document.querySelectorAll('.plan-opt').forEach(o=>o.classList.remove('sel'));
   el.classList.add('sel');
 }
-function doUpgrade(){
-  // TODO: Integrate Stripe / Apple IAP / Google Play Billing here
-  S.set('cf_pro',true);
-  closePW();
-  updateUsageUI();
-  toast('✨ Welcome to CatchFish Pro!');
-  document.getElementById('planLabel').textContent='Pro Plan 🎣';
-  document.getElementById('planSub').textContent='Unlimited analyses';
+async function doUpgrade(){
+  const emailInput=document.getElementById('pwEmail');
+  const email=emailInput.value.trim();
+  if(!/^\S+@\S+\.\S+$/.test(email)){
+    toast('⚠️ Enter a valid email to continue');
+    emailInput.focus();
+    return;
+  }
+
+  const btn=document.querySelector('#pwModal .btn-p');
+  const prevText=btn.textContent;
+  btn.disabled=true;
+  btn.textContent='Redirecting…';
+
+  try{
+    const resp=await fetch('/api/checkout',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({plan:selPlanId,userId:getUid(),email})
+    });
+    const data=await resp.json();
+    if(!resp.ok || !data.url) throw new Error(data.error||'Checkout failed');
+    window.location.href=data.url;
+  }catch(err){
+    toast('⚠️ '+(err.message||'Could not start checkout'));
+    btn.disabled=false;
+    btn.textContent=prevText;
+  }
 }
 
 // ════════════════════ LOADING
