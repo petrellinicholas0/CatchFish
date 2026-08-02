@@ -2,9 +2,9 @@ import { getStripe } from '../lib/stripeAdmin.js';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin.js';
 
 const PRICE_IDS = {
-  monthly: 'price_1TzMqVPJRgYrBGoz6zGWYRH1',
-  annual: 'price_1TzMtHPJRgYrBGoz45yV4QbQ',
-  single: 'price_1TzMu4PJRgYrBGozYQ5XgKTs'
+  monthly: 'price_1TzzZtPJRgYrBGozw2sN1zZX',
+  annual: 'price_1Tzzc2PJRgYrBGozmtQ4B7h0',
+  single: 'price_1TzzciPJRgYrBGozX9j1YCtL'
 };
 
 export default async function handler(req, res) {
