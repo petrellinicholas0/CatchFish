@@ -21,30 +21,13 @@ export default async function handler(req, res) {
     }
 
     const supabase = getSupabaseAdmin();
-    const { data: existingUser, error: selectError } = await supabase
+    const { error: upsertError } = await supabase
       .from('users')
-      .select('id')
-      .eq('id', userId)
-      .maybeSingle();
+      .upsert({ id: userId, email }, { onConflict: 'email' });
 
-    if (selectError) {
-      return res.status(500).json({ error: 'Failed to look up user record' });
-    }
-
-    if (!existingUser) {
-      const { error: insertError } = await supabase
-        .from('users')
-        .insert({ id: userId, email });
-
-      if (insertError) {
-        console.error('Supabase insert into users failed:', {
-          message: insertError.message,
-          details: insertError.details,
-          hint: insertError.hint,
-          code: insertError.code
-        });
-        return res.status(500).json({ error: 'Failed to create user record' });
-      }
+    if (upsertError) {
+      console.error('Supabase upsert into users failed:', upsertError.message);
+      return res.status(500).json({ error: 'Failed to prepare user record' });
     }
 
     const stripe = getStripe();
