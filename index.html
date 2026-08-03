@@ -1427,6 +1427,7 @@ function renderPaperResult(r){
       <div class="score-num ${t}">${avgScore}</div>
       <div class="score-summary">${r.overall_verdict||''}</div>
     </div>
+    <p class="modal-legal">This is a probability estimate based on automated indicators, not a fact. Always use your own judgment.</p>
 
     <div class="card">
       <div class="card-hd"><span class="card-hd-icon">📝</span><h3>Assignment Fit</h3><span class="card-hd-tag">${af.score ?? '—'}/100</span></div>
@@ -1473,6 +1474,7 @@ function renderEmailResult(r){
       <div class="score-verdict">${r.verdict}</div>
       <div class="score-summary">${r.summary}</div>
     </div>
+    <p class="modal-legal">This is a probability estimate based on automated indicators, not a fact. Always use your own judgment.</p>
     ${redHTML}
     ${greenHTML}
   `;
@@ -1520,6 +1522,7 @@ function showResults(r){
       <div class="score-verdict">${r.verdict}</div>
       <div class="score-summary">${r.summary}</div>
     </div>
+    <p class="modal-legal">This is a probability estimate based on automated indicators, not a fact. Always use your own judgment.</p>
 
     <div class="act-row">
       <button class="btn-s" onclick="shareResult()">📤 Share Card</button>
