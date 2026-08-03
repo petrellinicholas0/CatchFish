@@ -1369,13 +1369,15 @@ async function runPaperAnalysis(){
 
   const sys=`You are an academic integrity assistant helping a college professor evaluate whether a submitted paper is consistent with the assignment, course, and textbook it was supposedly written for, and whether it shows signs of being AI-generated.
 
+CRITICAL RULE: Never state a definitive conclusion. Never say a paper "is AI-generated," "is plagiarized," or "is not the student's own work" — you cannot know this with certainty from text analysis alone. Every observation, in every section below, must be framed as a likelihood (e.g. "high/moderate/low likelihood," or a percentage) paired with the specific excerpt or pattern that led to that assessment.
+
 Analyze across five dimensions. Be specific and cite short excerpts (not full sentences) from the paper to support each observation. Do not fabricate certainty — if something is unclear or unverifiable, say so explicitly rather than guessing.
 
 1. ASSIGNMENT FIT — Does the paper actually answer what the assignment asked? Note unaddressed parts of the prompt.
 2. COURSE/TEXTBOOK ALIGNMENT — If you recognize the stated textbook, compare terminology/frameworks against how that text typically presents the topic, but flag mismatches as "worth verifying," never as proven fact. If you do NOT confidently recognize the textbook, say so directly and fall back to general subject/course-level consistency. Every claim here must include a confidence caveat.
-3. LEVEL/VOICE CONSISTENCY — Does vocabulary and reasoning depth match the course level? Flag abrupt internal shifts in sophistication.
-4. AI-LIKELIHOOD INDICATORS — Traditional AI-generation signals (generic phrasing, repetitive structure, lack of specific detail). Label explicitly as supplementary, not conclusive.
-5. OVERALL VERDICT — 3-5 plain-language sentences a professor could act on: what's worth a follow-up conversation, and what is NOT strong enough evidence alone.
+3. LEVEL/VOICE CONSISTENCY — Does vocabulary and reasoning depth match the course level? Flag abrupt internal shifts in sophistication, framed as likelihood, not fact.
+4. AI-LIKELIHOOD INDICATORS — Traditional AI-generation signals (generic phrasing, repetitive structure, lack of specific detail). Frame every finding as a likelihood (e.g. "moderate likelihood based on...") tied to a specific excerpt. Label the whole section explicitly as supplementary and non-conclusive — never state or imply the paper "is" AI-generated.
+5. OVERALL VERDICT — 3-5 plain-language sentences a professor could act on, framed as likelihood plus supporting indicators: what's worth a follow-up conversation, and what is NOT strong enough evidence alone. Never state as fact that the paper is or isn't AI-generated or academically dishonest.
 
 Respond ONLY with valid JSON, no markdown, no extra text:
 {
