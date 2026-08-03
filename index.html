@@ -1525,7 +1525,6 @@ function showResults(r){
     <p class="modal-legal">This is a probability estimate based on automated indicators, not a fact. Always use your own judgment.</p>
 
     <div class="act-row">
-      <button class="btn-s" onclick="shareResult()">📤 Share Card</button>
       <button class="btn-g" onclick="nav('analyze')">🔍 New Analysis</button>
     </div>
 
@@ -1555,42 +1554,6 @@ function showResults(r){
       if(n>=r.score)clearInterval(iv);
     },32);
   },150);
-}
-
-// ════════════════════ SHARE AS IMAGE CARD
-async function shareResult(){
-  if(!curResult){return;}
-  const r=curResult;
-  const t=tier(r.score);
-
-  // Build a text-based share card (canvas API alternative using html2canvas isn't available,
-  // so we use native share with rich text, or copy a formatted summary)
-  const dotMap={pass:'●',warn:'◐',fail:'○',skip:'—'};
-  const checks=(r.checks||[]).map(c=>`${dotMap[c.status]||'—'} ${c.name}: ${c.status.toUpperCase()}`).join('\n');
-  const flags=(r.red_flags||[]).map(f=>`🚩 ${f}`).join('\n');
-
-  const cardText=
-`🎣 CatchFish Profile Analysis
-${'─'.repeat(30)}
-AUTHENTICITY SCORE: ${r.score}/100
-VERDICT: ${r.verdict}
-
-${r.summary}
-
-CHECKS:
-${checks}
-${flags?`\nRED FLAGS:\n${flags}`:''}
-${'─'.repeat(30)}
-⚠ AI risk indicator only — not a verdict
-Analyzed with CatchFish`;
-
-  if(navigator.share){
-    try{await navigator.share({title:`CatchFish — Score ${r.score}/100`,text:cardText});}
-    catch(e){}
-  } else {
-    try{await navigator.clipboard.writeText(cardText);toast('📋 Result card copied to clipboard!');}
-    catch(e){toast('📋 Copy failed — try again');}
-  }
 }
 
 // ════════════════════ HISTORY
