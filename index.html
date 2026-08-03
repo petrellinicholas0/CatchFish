@@ -1317,15 +1317,17 @@ async function runEmailAnalysis(){
 
   const sys=`You are an email security analyst. Analyze this email for phishing, scam, and social-engineering indicators.
 
+CRITICAL RULE: Never state a definitive conclusion. Never say things like "this is a scam," "this is phishing," or "this is safe/legitimate" — you cannot know this with certainty from the text alone. The verdict and summary must be framed as a likelihood (e.g. "high/moderate/low likelihood," or a percentage) paired with the specific indicators that led to that assessment.
+
 Return ONLY valid JSON with this exact structure — no markdown, no extra text:
 {
   "score": <integer 0-100, 100=very likely safe>,
-  "verdict": "<short verdict e.g. 'Likely Safe' or 'High Risk — Likely Phishing'>",
-  "summary": "<2-3 sentences, plain language>",
+  "verdict": "<short probabilistic verdict, e.g. 'Low Likelihood of Phishing' or 'High Likelihood of Phishing — Multiple Red Flags'>",
+  "summary": "<2-3 sentences, plain language, framed as likelihood plus supporting indicators — not a fact>",
   "red_flags": ["<flag>"],
   "green_flags": ["<positive sign>"]
 }
-Always use probabilistic language.`;
+Always use probabilistic language in every field — never a bare factual claim.`;
 
   const content=`Sender: ${sender||'Not given'}\n\nEmail:\n${emailText}`;
 
