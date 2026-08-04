@@ -196,8 +196,6 @@ h1,h2,h3,h4{font-weight:900;letter-spacing:-0.03em;line-height:1.1}
 .upload-zone h4{font-size:13px;font-weight:700;margin-bottom:3px}
 .upload-zone p{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted)}
 
-.prev-wrap{display:none;position:relative}
-.prev-wrap img{width:100%;max-height:240px;object-fit:cover;border-radius:var(--r-sm);display:block}
 .prev-clear{
   position:absolute;top:8px;right:8px;
   width:26px;height:26px;
@@ -205,6 +203,12 @@ h1,h2,h3,h4{font-weight:900;letter-spacing:-0.03em;line-height:1.1}
   border-radius:50%;color:#fff;font-size:13px;
   cursor:pointer;display:flex;align-items:center;justify-content:center;
 }
+
+.photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.photo-grid:not(:empty){margin-bottom:10px}
+.photo-thumb{position:relative;aspect-ratio:1;border-radius:var(--r-sm);overflow:hidden;background:var(--paper2)}
+.photo-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.photo-thumb .prev-clear{width:22px;height:22px;font-size:11px;top:4px;right:4px}
 
 /* ─── FORM ─────────────────────────────── */
 .fg{margin-bottom:12px}
@@ -772,19 +776,16 @@ textarea{min-height:84px;line-height:1.55}
     <div class="card">
       <div class="card-hd">
         <span class="card-hd-icon">📸</span>
-        <h3>Profile Photo</h3>
+        <h3>Profile Photos</h3>
         <span class="card-hd-tag">optional</span>
       </div>
       <div class="cb">
+        <div class="photo-grid" id="photoGrid"></div>
         <div class="upload-zone" id="upZone">
-          <input type="file" id="imgIn" accept="image/*">
+          <input type="file" id="imgIn" accept="image/*" multiple>
           <span class="upload-zone-icon">📷</span>
-          <h4>Tap to upload photo</h4>
-          <p>Screenshot their profile · PNG, JPG, WEBP</p>
-        </div>
-        <div class="prev-wrap" id="prevWrap">
-          <img id="prevImg" alt="Preview">
-          <button class="prev-clear" onclick="clearImg()">✕</button>
+          <h4>Tap to upload photos</h4>
+          <p>Screenshots of their profile · up to 6 · PNG, JPG, WEBP</p>
         </div>
       </div>
     </div>
@@ -1135,42 +1136,66 @@ function nav(p){
 }
 
 // ════════════════════ IMAGE UPLOAD
-let imgB64=null;
+const MAX_PHOTOS=6;
+let imgB64Arr=[];
 const imgIn=document.getElementById('imgIn');
 const upZone=document.getElementById('upZone');
-const prevWrap=document.getElementById('prevWrap');
-const prevImg=document.getElementById('prevImg');
+const photoGrid=document.getElementById('photoGrid');
 
-imgIn.addEventListener('change',e=>{
-  const f=e.target.files[0];
-  if(!f) return;
-  const r=new FileReader();
-  r.onload=ev=>{
-    const img=new Image();
-    img.onload=()=>{
-      const maxDim=1024;
-      let w=img.width,h=img.height;
-      if(w>maxDim||h>maxDim){
-        if(w>h){h=Math.round(h*maxDim/w);w=maxDim;}
-        else{w=Math.round(w*maxDim/h);h=maxDim;}
-      }
-      const canvas=document.createElement('canvas');
-      canvas.width=w;canvas.height=h;
-      canvas.getContext('2d').drawImage(img,0,0,w,h);
-      const compressed=canvas.toDataURL('image/jpeg',0.8);
-      imgB64=compressed.split(',')[1];
-      prevImg.src=compressed;
-      upZone.style.display='none';
-      prevWrap.style.display='block';
+function compressImage(file){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onload=ev=>{
+      const img=new Image();
+      img.onload=()=>{
+        const maxDim=1024;
+        let w=img.width,h=img.height;
+        if(w>maxDim||h>maxDim){
+          if(w>h){h=Math.round(h*maxDim/w);w=maxDim;}
+          else{w=Math.round(w*maxDim/h);h=maxDim;}
+        }
+        const canvas=document.createElement('canvas');
+        canvas.width=w;canvas.height=h;
+        canvas.getContext('2d').drawImage(img,0,0,w,h);
+        const compressed=canvas.toDataURL('image/jpeg',0.8);
+        resolve(compressed.split(',')[1]);
+      };
+      img.onerror=reject;
+      img.src=ev.target.result;
     };
-    img.src=ev.target.result;
-  };
-  r.readAsDataURL(f);
+    r.onerror=reject;
+    r.readAsDataURL(file);
+  });
+}
+
+imgIn.addEventListener('change',async e=>{
+  const files=Array.from(e.target.files||[]);
+  imgIn.value='';
+  if(!files.length) return;
+
+  const remaining=MAX_PHOTOS-imgB64Arr.length;
+  if(remaining<=0){toast(`⚠ Max ${MAX_PHOTOS} photos`);return;}
+
+  const toAdd=files.slice(0,remaining);
+  if(files.length>remaining){toast(`⚠ Only added ${toAdd.length} — max ${MAX_PHOTOS} photos`);}
+
+  const results=await Promise.all(toAdd.map(f=>compressImage(f).catch(()=>null)));
+  results.forEach(b64=>{if(b64)imgB64Arr.push(b64);});
+  renderPhotoGrid();
 });
 
-function clearImg(){
-  imgB64=null;imgIn.value='';prevImg.src='';
-  prevWrap.style.display='none';upZone.style.display='block';
+function renderPhotoGrid(){
+  photoGrid.innerHTML=imgB64Arr.map((b64,i)=>`
+    <div class="photo-thumb">
+      <img src="data:image/jpeg;base64,${b64}" alt="Photo ${i+1}">
+      <button class="prev-clear" onclick="clearImg(${i})">✕</button>
+    </div>`).join('');
+  upZone.style.display=imgB64Arr.length>=MAX_PHOTOS?'none':'block';
+}
+
+function clearImg(i){
+  imgB64Arr.splice(i,1);
+  renderPhotoGrid();
 }
 
 // ════════════════════ USAGE UI
@@ -1192,7 +1217,7 @@ let curResult=null;
 async function runAnalysis(){
   const bio=document.getElementById('bio').value.trim();
   const msgs=document.getElementById('msgs').value.trim();
-  if(!bio&&!imgB64){toast('⚠ Add a photo or bio to analyze');return;}
+  if(!bio&&!imgB64Arr.length){toast('⚠ Add a photo or bio to analyze');return;}
 
   checkDailyReset();
   const used=S.usage(),isPro=S.isPro();
@@ -1225,11 +1250,13 @@ Location: ${loc||'Not given'}
 Occupation: ${job||'Not given'}
 Bio: ${bio||'Not given'}
 ${msgs?`Messages from them: ${msgs}`:''}
-Photo provided: ${imgB64?'Yes':'No'}`.trim();
+Photos provided: ${imgB64Arr.length}${imgB64Arr.length===1?' (single photo — note that cross-photo consistency cannot be verified)':imgB64Arr.length>1?' (multiple photos — cross-reference them for consistency)':''}`.trim();
 
   const sys=`You are CatchFish, an expert dating profile authenticity analyzer. Analyze for AI-generated photos, catfishing, romance scams, bots, and misrepresentation.
 
 CRITICAL RULE: Never state a definitive conclusion. Never say things like "this is fake," "this is a scam," "this is AI-generated," "this is a real person," or "this is authentic" — you cannot know this with certainty from the information given. Every conclusion, in every field below (verdict, summary, checks, detailed_analysis), must be framed as a likelihood (e.g. "high/moderate/low likelihood," or a percentage) paired with the specific indicators that led to that assessment. Never present an assessment without its supporting evidence.
+
+MULTIPLE PHOTOS: If more than one photo is provided, cross-reference them for consistency: whether it's plausibly the same person across all photos, whether apparent age is consistent, whether photo quality/lighting/style is consistent (a mix of professional-looking photos and low-quality selfies can itself be a scam indicator), and — where visible — whether background/location details are consistent with one person's life. Summarize these cross-photo findings, framed as likelihood, in the "Image Authenticity" check, and explicitly note that multiple photos were cross-referenced. If only one photo is provided, explicitly note in the "Image Authenticity" check that cross-photo consistency could not be verified since only a single photo was given — never claim consistency or inconsistency across photos that don't exist. If no photo is provided, mark that check "skip".
 
 Return ONLY valid JSON with this exact structure — no markdown, no extra text:
 {
@@ -1253,7 +1280,7 @@ Always use probabilistic language in every field — never a bare factual claim.
 
   try{
     const content=[];
-    if(imgB64) content.push({type:'image',source:{type:'base64',media_type:'image/jpeg',data:imgB64}});
+    imgB64Arr.forEach(b64=>content.push({type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}}));
     content.push({type:'text',text:`Analyze this dating profile:\n\n${profileInfo}`});
 
     const resp=await fetch('/api/analyze',{
