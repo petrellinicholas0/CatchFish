@@ -2,6 +2,7 @@
   "name": "CatchFish - Dating Profile Detector",
   "short_name": "CatchFish",
   "description": "Detect fake dating profiles, AI-generated photos & romance scams",
+  "id": "/",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#fdf6ec",
@@ -19,6 +20,29 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshot-1.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Home screen — upload a profile photo and details to analyze"
+    },
+    {
+      "src": "screenshot-2.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Profile analyzer in use, with photos and details filled in"
+    },
+    {
+      "src": "screenshot-3.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Completed analysis with authenticity score and check breakdown"
     }
   ]
 }
