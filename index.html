@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#ff6b47">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -45,14 +45,19 @@
 
 /* ─── RESET ─────────────────────────────── */
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html{height:100%;font-size:16px}
+html,body{
+  height:100vh;height:100dvh;
+  width:100%;
+  position:fixed;inset:0;
+  overflow:hidden;
+  overscroll-behavior:none;
+  touch-action:manipulation;
+  font-size:16px;
+}
 body{
   font-family:'Fraunces',Georgia,serif;
   background:var(--paper);
   color:var(--ink);
-  min-height:100%;
-  overflow-x:hidden;
-  padding-bottom:calc(var(--nav-h) + var(--safe-b) + 24px);
 }
 
 /* Grain overlay */
@@ -76,6 +81,7 @@ h1,h2,h3,h4{font-weight:900;letter-spacing:-0.03em;line-height:1.1}
 .nav{
   position:fixed;bottom:0;left:0;right:0;
   height:calc(var(--nav-h) + var(--safe-b));
+  padding-bottom:var(--safe-b);
   background:rgba(245,240,232,0.96);
   backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   border-top:1.5px solid var(--border2);
@@ -106,14 +112,25 @@ h1,h2,h3,h4{font-weight:900;letter-spacing:-0.03em;line-height:1.1}
 }
 
 /* ─── PAGES ─────────────────────────────── */
-.page{display:none;position:relative;z-index:1;animation:pIn .28s ease}
-.page.on{display:block}
+/* Each .page fills the viewport and is its own fixed-header / scrollable-content
+   shell; only .sb (the content zone) ever scrolls. Pages stack via position:absolute
+   so switching between them (see nav()) can crossfade without any layout jump. */
+.page{
+  display:none;position:absolute;inset:0;
+  flex-direction:column;
+  z-index:1;
+}
+.page.on{display:flex}
+.page.entering{animation:pIn .2s ease-out;z-index:2}
+.page.leaving{animation:pOut .16s ease-out forwards}
 @keyframes pIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pOut{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-6px)}}
 
 /* ─── PAGE HEADER ─────────────────────────────── */
 .ph{
-  padding:52px 20px 18px;
-  position:sticky;top:0;
+  flex-shrink:0;
+  padding:20px 20px 18px;
+  padding-top:calc(20px + env(safe-area-inset-top));
   background:rgba(245,240,232,0.94);
   backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
   border-bottom:1.5px solid var(--border);
@@ -122,7 +139,13 @@ h1,h2,h3,h4{font-weight:900;letter-spacing:-0.03em;line-height:1.1}
 .ph-title{font-size:26px;font-weight:900}
 .ph-sub{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-top:3px;letter-spacing:0.06em}
 
-.sb{padding:18px 18px 0}
+/* ─── CONTENT ZONE (the only thing that scrolls) ─────────────────────────────── */
+.sb{
+  flex:1;min-height:0;
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
+  padding:18px 18px calc(18px + var(--nav-h) + var(--safe-b));
+}
 
 /* ─── CARDS ─────────────────────────────── */
 .card{
@@ -246,20 +269,22 @@ textarea{min-height:84px;line-height:1.55}
 .btn-p:disabled{opacity:.42;cursor:not-allowed;transform:none;box-shadow:none}
 
 .btn-s{
-  padding:11px 18px;background:transparent;
+  min-height:44px;padding:11px 18px;background:transparent;
   color:var(--coral);border:1.5px solid var(--coral);
   border-radius:var(--r-sm);
   font-family:'Fraunces',serif;font-size:13px;font-weight:700;
   cursor:pointer;transition:all .2s;
+  display:inline-flex;align-items:center;justify-content:center;
 }
 .btn-s:active{background:var(--coral-lt)}
 
 .btn-g{
-  padding:11px 18px;background:var(--paper2);
+  min-height:44px;padding:11px 18px;background:var(--paper2);
   color:var(--ink);border:1.5px solid var(--border);
   border-radius:var(--r-sm);
   font-family:'Fraunces',serif;font-size:13px;font-weight:700;
   cursor:pointer;transition:all .15s;
+  display:inline-flex;align-items:center;justify-content:center;
 }
 .btn-g:active{background:var(--paper3)}
 
@@ -271,6 +296,7 @@ textarea{min-height:84px;line-height:1.55}
   display:none;flex-direction:column;
   align-items:center;justify-content:center;
   z-index:200;padding:40px;
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
 }
 .loading-ov.on{display:flex}
 
@@ -488,6 +514,7 @@ textarea{min-height:84px;line-height:1.55}
   color:var(--muted2);margin:18px 0 7px;
 }
 .set-row{
+  min-height:44px;
   background:#fff;border:1.5px solid var(--border);
   border-radius:var(--r-sm);padding:13px 15px;
   display:flex;align-items:center;justify-content:space-between;
@@ -527,14 +554,56 @@ textarea{min-height:84px;line-height:1.55}
   background:var(--paper);
   border:1.5px solid var(--border2);
   border-radius:24px 24px 0 0;
-  padding:24px 20px 40px;
+  padding:24px 20px calc(40px + var(--safe-b));
   width:100%;max-width:480px;
+  max-height:90vh;max-height:90dvh;
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
   animation:shUp .35s cubic-bezier(.4,0,.2,1);
 }
 @keyframes shUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 .modal-handle{
   width:32px;height:3px;background:var(--border2);
   border-radius:2px;margin:0 auto 22px;
+}
+
+/* ─── RESULT SHEETS (slide-up modal presentation for analysis results) ─────────────────────────────── */
+.sheet-ov{
+  position:fixed;inset:0;
+  background:rgba(14,12,10,.5);
+  z-index:250;display:none;
+  align-items:flex-end;justify-content:center;
+}
+.sheet-ov.on{display:flex}
+.sheet-panel{
+  background:var(--paper);
+  border:1.5px solid var(--border2);
+  border-radius:24px 24px 0 0;
+  width:100%;max-width:480px;
+  max-height:88vh;max-height:88dvh;
+  display:flex;flex-direction:column;
+  animation:shUp .32s cubic-bezier(.4,0,.2,1);
+  box-shadow:var(--shadow-lg);
+}
+.sheet-hd{
+  flex-shrink:0;position:relative;
+  padding:12px 20px 10px;
+  display:flex;flex-direction:column;align-items:center;
+}
+.sheet-handle{width:32px;height:3px;background:var(--border2);border-radius:2px}
+.sheet-close{
+  position:absolute;top:2px;right:8px;
+  width:44px;height:44px;
+  background:none;border:none;
+  color:var(--muted);font-size:16px;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+}
+.sheet-title{width:100%;text-align:left;margin-top:8px}
+.sheet-scroll{
+  flex:1;min-height:0;
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
+  padding:0 18px calc(24px + var(--safe-b));
 }
 .modal-title{font-size:26px;font-weight:900;text-align:center;margin-bottom:5px}
 .modal-sub{
@@ -589,6 +658,7 @@ textarea{min-height:84px;line-height:1.55}
   z-index:500;display:flex;flex-direction:column;
   align-items:center;justify-content:center;
   padding:40px 24px;text-align:center;
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
 }
 .ob-ov.gone{display:none}
 .ob-fish{font-size:64px;margin-bottom:10px;animation:fishBob 2s ease-in-out infinite}
@@ -826,18 +896,19 @@ textarea{min-height:84px;line-height:1.55}
   </div>
 </div>
 
-<!-- ═══════════════════════════════════ PAGE: RESULTS -->
-<div class="page" id="pg-results">
-  <div class="ph">
-    <div style="display:flex;align-items:center;gap:10px">
-      <button onclick="nav('analyze')" style="background:var(--paper2);border:1.5px solid var(--border);border-radius:var(--r-sm);padding:6px 12px;font-family:'Fraunces',serif;font-size:13px;font-weight:700;cursor:pointer;color:var(--ink)">← Back</button>
-      <div>
+<!-- ═══════════════════════════════════ RESULTS SHEET (photo/bio scan) -->
+<div class="sheet-ov" id="pg-results">
+  <div class="sheet-panel">
+    <div class="sheet-hd">
+      <div class="sheet-handle"></div>
+      <button class="sheet-close" onclick="closeSheet('pg-results')" aria-label="Close">✕</button>
+      <div class="sheet-title">
         <div class="ph-title" style="font-size:20px">Results</div>
         <div class="ph-sub" id="resDate"></div>
       </div>
     </div>
+    <div class="sheet-scroll" id="resBody"></div>
   </div>
-  <div class="sb" id="resBody"></div>
 </div>
 
 <!-- ═══════════════════════════════════ PAGE: HISTORY -->
@@ -997,7 +1068,6 @@ textarea{min-height:84px;line-height:1.55}
       <label>Paste the email text</label>
       <textarea id="emailText" rows="10" placeholder="Paste the full email here..."></textarea>
       <button class="btn-p" onclick="runEmailAnalysis()">Analyze Email</button>
-      <div id="emailResult"></div>
     </div>
   </div>
   </div>
@@ -1026,7 +1096,6 @@ textarea{min-height:84px;line-height:1.55}
           <textarea id="paperText" rows="10" placeholder="Paste the full paper here..."></textarea>
         </div>
         <button class="btn-p" onclick="runPaperAnalysis()">🎓 Check Paper</button>
-        <div id="paperResult"></div>
 
         <div class="disc" style="margin-top:12px">
           <p><strong>⚠ Disclaimer:</strong> This report highlights patterns worth a follow-up conversation with the student — it is not proof of AI use or academic dishonesty. Textbook-specific observations may be incomplete or wrong; verify before acting.</p>
@@ -1035,6 +1104,29 @@ textarea{min-height:84px;line-height:1.55}
     </div>
   </div>
 </div>
+
+<!-- ═══════════════════════════════════ RESULTS SHEET (email scam check) -->
+<div class="sheet-ov" id="emailResultSheet">
+  <div class="sheet-panel">
+    <div class="sheet-hd">
+      <div class="sheet-handle"></div>
+      <button class="sheet-close" onclick="closeSheet('emailResultSheet')" aria-label="Close">✕</button>
+    </div>
+    <div class="sheet-scroll" id="emailResult"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ RESULTS SHEET (AI paper check) -->
+<div class="sheet-ov" id="paperResultSheet">
+  <div class="sheet-panel">
+    <div class="sheet-hd">
+      <div class="sheet-handle"></div>
+      <button class="sheet-close" onclick="closeSheet('paperResultSheet')" aria-label="Close">✕</button>
+    </div>
+    <div class="sheet-scroll" id="paperResult"></div>
+  </div>
+</div>
+
 <!-- ═══════════════════════════════════ BOTTOM NAV -->
 <nav class="nav">
   <div class="nav-btn on" onclick="nav('analyze')" id="nv-analyze"><span class="nav-btn-icon">🔍</span><span class="nav-btn-label">ANALYZE</span></div>
@@ -1123,13 +1215,76 @@ window.addEventListener('load',()=>{
 
 // ════════════════════ NAVIGATION
 let curPage='analyze';
+
+// ════════════════════ RESULT SHEETS
+const RESULT_SHEET_IDS=['pg-results','emailResultSheet','paperResultSheet'];
+function openSheet(id){
+  document.getElementById(id)?.classList.add('on');
+}
+function closeSheet(id){
+  document.getElementById(id)?.classList.remove('on');
+}
+function closeAllSheets(){
+  RESULT_SHEET_IDS.forEach(closeSheet);
+}
+
+// swipe-down-to-dismiss on each sheet's handle/header
+document.querySelectorAll('.sheet-hd').forEach(hd=>{
+  let startY=null;
+  hd.addEventListener('touchstart',e=>{startY=e.touches[0].clientY},{passive:true});
+  hd.addEventListener('touchend',e=>{
+    if(startY===null)return;
+    const dy=e.changedTouches[0].clientY-startY;
+    startY=null;
+    if(dy>60){
+      const sheet=hd.closest('.sheet-ov');
+      if(sheet)closeSheet(sheet.id);
+    }
+  },{passive:true});
+});
+
+// Resolves any in-flight page transition immediately: strips the transient
+// entering/leaving classes and makes sure only pg-${curPage} keeps 'on'.
+// Called at the start of every nav() so rapid/overlapping taps can never
+// leave the shell with zero (or two) visible pages.
+let navCleanupTimer=null;
+function finishPageTransition(){
+  document.querySelectorAll('.page.entering,.page.leaving').forEach(el=>{
+    el.classList.remove('entering','leaving');
+    if(el.id!==`pg-${curPage}`) el.classList.remove('on');
+  });
+}
+
 function nav(p){
-  document.querySelectorAll('.page').forEach(el=>el.classList.remove('on'));
+  closeAllSheets();
+
+  if(p==='results'){
+    openSheet('pg-results');
+    return;
+  }
+
+  if(navCleanupTimer){clearTimeout(navCleanupTimer);navCleanupTimer=null;}
+  finishPageTransition();
+
+  if(p===curPage) return;
+
+  const incoming=document.getElementById(`pg-${p}`);
+  if(!incoming) return;
+  const outgoing=document.getElementById(`pg-${curPage}`);
+
   document.querySelectorAll('.nav-btn').forEach(el=>el.classList.remove('on'));
-  document.getElementById(`pg-${p}`).classList.add('on');
   document.getElementById(`nv-${p}`)?.classList.add('on');
+
+  incoming.classList.add('on','entering');
+  if(outgoing && outgoing!==incoming) outgoing.classList.add('leaving');
+
   curPage=p;
   if(p==='history') renderHist();
+
+  navCleanupTimer=setTimeout(()=>{
+    navCleanupTimer=null;
+    finishPageTransition();
+  },220);
 }
 
 // ════════════════════ IMAGE UPLOAD
@@ -1369,6 +1524,7 @@ Always use probabilistic language in every field — never a bare factual claim.
     if(!isPro){S.set('cf_usage',used+1);updateUsageUI();}
 
     renderEmailResult(result);
+    openSheet('emailResultSheet');
   }catch(e){
     toast('❌ Error: '+(e&&e.message?e.message:'Something went wrong'));
     console.error(e);
@@ -1436,6 +1592,7 @@ ${paperText}`;
     if(!isPro){S.set('cf_usage',used+1);updateUsageUI();}
 
     renderPaperResult(result);
+    openSheet('paperResultSheet');
   }catch(e){
     toast('❌ Error: '+(e&&e.message?e.message:'Something went wrong'));
     console.error(e);
