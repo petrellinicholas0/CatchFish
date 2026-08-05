@@ -154,6 +154,13 @@ h1,h2,h3,h4{font-weight:900;letter-spacing:-0.03em;line-height:1.1}
   overscroll-behavior:contain;
   padding:18px 18px calc(18px + var(--nav-h) + var(--safe-b));
 }
+/* Added by JS (fitSb()) only when content is measured to be shorter than the
+   available space — never guessed, never applied while content needs to
+   scroll. Centers that short content in the screen instead of leaving it
+   pinned to the top with dead space below, which is what actually produced
+   the reported "doesn't fill the screen" look (the container was already
+   filling correctly; short content just wasn't using the extra room). */
+.sb.fill-center{display:flex;flex-direction:column;justify-content:center}
 
 /* ─── CARDS ─────────────────────────────── */
 .card{
@@ -1272,6 +1279,47 @@ if(window.visualViewport) window.visualViewport.addEventListener('resize',setApp
 setTimeout(setAppHeight,100);
 setTimeout(setAppHeight,500);
 
+// ════════════════════ SHORT-CONTENT CENTERING
+// The content area (.sb) correctly fills the full screen by design (needed so
+// long content can scroll) — but when a screen's actual content is shorter
+// than that, top-aligning it leaves a large dead-looking void below, which is
+// exactly what read as "not filling the screen" even once the container's own
+// sizing was measured to be pixel-exact. Only ever centers when scrollHeight
+// is measured to be <= clientHeight (i.e. there is nothing to scroll to), so
+// this can never make overflowing content inaccessible.
+function fitSb(sb){
+  if(!sb) return;
+  // Must measure with fill-center OFF: once it's applied (display:flex +
+  // justify-content:center), scrollHeight no longer reliably reports overflow
+  // for centered flex content in some engines, which would make growing
+  // content (e.g. an expanding tip card) get silently stuck centered instead
+  // of switching back to scrollable — so always re-measure from the plain,
+  // un-centered state before deciding.
+  sb.classList.remove('fill-center');
+  sb.classList.toggle('fill-center', sb.scrollHeight<=sb.clientHeight+1);
+}
+function fitAllSb(){
+  document.querySelectorAll('.sb').forEach(fitSb);
+}
+document.querySelectorAll('.sb').forEach(sb=>{
+  // attributes:true catches class toggles that change height without touching
+  // childList/text (e.g. Learn's tip-card expand/collapse) — those also animate
+  // via a CSS max-height transition, so also recheck once that transition ends,
+  // since the box isn't at its final height until then. Only ignore attribute
+  // mutations targeting sb itself: those are fitSb's own class writes, and
+  // reacting to them would be an infinite observe-mutate-observe loop. childList
+  // mutations on sb (e.g. innerHTML reassignment when a page re-renders) also
+  // report sb as their target, so those must NOT be filtered out.
+  new MutationObserver(muts=>{
+    if(muts.every(m=>m.type==='attributes'&&m.target===sb)) return;
+    fitSb(sb);
+  }).observe(sb,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['class','style']});
+  sb.addEventListener('transitionend',()=>fitSb(sb));
+});
+window.addEventListener('resize',fitAllSb);
+window.addEventListener('orientationchange',fitAllSb);
+if(window.visualViewport) window.visualViewport.addEventListener('resize',fitAllSb);
+
 // ════════════════════ CONFIG
 const FREE_LIMIT = 3;
 const RESET_HOURS = 24;
@@ -1328,6 +1376,7 @@ window.addEventListener('load',()=>{
   renderHist();
   renderHomeRecent();
   loadSets();
+  fitAllSb();
   const checkoutStatus = new URLSearchParams(location.search).get('checkout');
   if(checkoutStatus==='success'){
     S.set('cf_pro',true);
@@ -1382,6 +1431,7 @@ function nav(p){
   curPage=p;
   if(p==='history') renderHist();
   if(p==='home') renderHomeRecent();
+  fitSb(incoming.querySelector('.sb'));
 
   navCleanupTimer=setTimeout(()=>{
     navCleanupTimer=null;
