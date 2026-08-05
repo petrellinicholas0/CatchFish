@@ -46,7 +46,15 @@
 /* ─── RESET ─────────────────────────────── */
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{
-  height:100vh;height:100dvh;
+  /* No explicit height here on purpose: `inset:0` on a `position:fixed` box with
+     `height:auto` already stretches it to exactly fill the true viewport per the
+     CSS spec (top/bottom resolve the height directly), which is robust across
+     browser tab AND standalone/PWA display mode. An explicit height:100vh/100dvh
+     here would instead win over that top/bottom-driven sizing (per the CSS
+     over-constraint rules for fixed-position boxes) and reintroduce dependence on
+     vh/dvh viewport-unit computation, which is exactly where standalone-mode
+     under-reporting bugs live — so keep this shell unitless and let inset:0 do
+     the sizing. */
   width:100%;
   position:fixed;inset:0;
   overflow:hidden;
