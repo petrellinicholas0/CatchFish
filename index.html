@@ -439,6 +439,47 @@ textarea{min-height:84px;line-height:1.55}
 }
 .disc strong{color:var(--coral)}
 
+/* ─── HOME: TOOL CARDS ─────────────────────────────── */
+.home-section{
+  font-family:'JetBrains Mono',monospace;
+  font-size:9px;letter-spacing:0.12em;text-transform:uppercase;
+  color:var(--muted2);margin:18px 0 7px;
+}
+.home-section:first-child{margin-top:0}
+.tool-card{
+  min-height:44px;
+  background:#fff;border:1.5px solid var(--border);
+  border-radius:var(--r);padding:16px;
+  margin-bottom:10px;display:flex;gap:14px;
+  align-items:center;cursor:pointer;
+  transition:border-color .2s;box-shadow:var(--shadow);
+}
+.tool-card:active{border-color:var(--coral)}
+.tool-card-icon{
+  width:48px;height:48px;border-radius:var(--r-sm);
+  display:flex;align-items:center;justify-content:center;
+  font-size:23px;flex-shrink:0;
+}
+.tool-card.c1 .tool-card-icon{background:var(--coral-lt)}
+.tool-card.c2 .tool-card-icon{background:var(--rose-lt)}
+.tool-card.c3 .tool-card-icon{background:var(--amber-lt)}
+.tool-card-info{flex:1;min-width:0}
+.tool-card-info h3{font-size:15px;font-weight:700;margin-bottom:2px}
+.tool-card-info p{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);line-height:1.5}
+.tool-card-arr{color:var(--muted);font-size:18px;flex-shrink:0}
+
+/* small pill back button for secondary (non-tab) screens */
+.btn-back{
+  min-width:44px;min-height:44px;
+  background:var(--paper2);border:1.5px solid var(--border);
+  border-radius:var(--r-sm);
+  font-family:'Fraunces',serif;font-size:15px;font-weight:700;
+  color:var(--ink);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+}
+.btn-back:active{background:var(--paper3)}
+
 /* ─── HISTORY ─────────────────────────────── */
 .empty{text-align:center;padding:56px 20px}
 .empty-icon{font-size:44px;display:block;margin-bottom:12px}
@@ -821,15 +862,15 @@ textarea{min-height:84px;line-height:1.55}
 <!-- Hidden share card (rendered to canvas) -->
 <div id="shareCard"></div>
 
-<!-- ═══════════════════════════════════ PAGE: ANALYZE -->
-<div class="page on" id="pg-analyze">
+<!-- ═══════════════════════════════════ PAGE: HOME -->
+<div class="page on" id="pg-home">
   <div class="ph">
     <div class="ph-title">CatchFish 🎣</div>
-    <div class="ph-sub">dating profile analyzer</div>
+    <div class="ph-sub">3 tools to catch scams before they catch you</div>
   </div>
   <div class="sb">
 
-    <!-- Usage strip -->
+    <!-- Usage strip (applies globally, not per-tool) -->
     <div class="usage-strip" id="uStrip">
       <div class="usage-left">
         <div class="usage-top">
@@ -841,6 +882,53 @@ textarea{min-height:84px;line-height:1.55}
       </div>
       <button class="btn-up" onclick="openPW()">Upgrade</button>
     </div>
+
+    <div class="home-section">Tools</div>
+
+    <div class="tool-card c1" onclick="nav('analyze')">
+      <span class="tool-card-icon">🔍</span>
+      <div class="tool-card-info">
+        <h3>Profile Analyzer</h3>
+        <p>Spot fake dating profiles, AI photos & romance scams</p>
+      </div>
+      <span class="tool-card-arr">›</span>
+    </div>
+
+    <div class="tool-card c2" onclick="nav('email')">
+      <span class="tool-card-icon">✉️</span>
+      <div class="tool-card-info">
+        <h3>Email Check</h3>
+        <p>Spot phishing & scam emails before you click</p>
+      </div>
+      <span class="tool-card-arr">›</span>
+    </div>
+
+    <div class="tool-card c3" onclick="nav('paper')">
+      <span class="tool-card-icon">🎓</span>
+      <div class="tool-card-info">
+        <h3>Paper Check</h3>
+        <p>Assignment fit & AI-likelihood report for a submitted paper</p>
+      </div>
+      <span class="tool-card-arr">›</span>
+    </div>
+
+    <div id="homeRecent"></div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ PAGE: ANALYZE -->
+<div class="page" id="pg-analyze">
+  <div class="ph">
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="btn-back" onclick="nav('home')" aria-label="Back to Home">←</button>
+      <div>
+        <div class="ph-title" style="font-size:20px">Profile Analyzer</div>
+        <div class="ph-sub">dating profile analyzer</div>
+      </div>
+    </div>
+  </div>
+  <div class="sb">
 
     <!-- Photo upload -->
     <div class="card">
@@ -1058,8 +1146,13 @@ textarea{min-height:84px;line-height:1.55}
 </div>
   <div class="page" id="pg-email">
   <div class="ph">
-    <div class="ph-title">Email Check ✉️</div>
-    <div class="ph-sub">Spot phishing & scam emails</div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="btn-back" onclick="nav('home')" aria-label="Back to Home">←</button>
+      <div>
+        <div class="ph-title" style="font-size:20px">Email Check ✉️</div>
+        <div class="ph-sub">Spot phishing & scam emails</div>
+      </div>
+    </div>
   </div>
   <div class="sb">
     <div class="card">
@@ -1073,8 +1166,13 @@ textarea{min-height:84px;line-height:1.55}
   </div>
 <div class="page" id="pg-paper">
   <div class="ph">
-    <div class="ph-title">Paper Check 🎓</div>
-    <div class="ph-sub">Assignment fit & AI-likelihood report</div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="btn-back" onclick="nav('home')" aria-label="Back to Home">←</button>
+      <div>
+        <div class="ph-title" style="font-size:20px">Paper Check 🎓</div>
+        <div class="ph-sub">Assignment fit & AI-likelihood report</div>
+      </div>
+    </div>
   </div>
   <div class="sb">
     <div class="card">
@@ -1129,12 +1227,10 @@ textarea{min-height:84px;line-height:1.55}
 
 <!-- ═══════════════════════════════════ BOTTOM NAV -->
 <nav class="nav">
-  <div class="nav-btn on" onclick="nav('analyze')" id="nv-analyze"><span class="nav-btn-icon">🔍</span><span class="nav-btn-label">ANALYZE</span></div>
+  <div class="nav-btn on" onclick="nav('home')" id="nv-home"><span class="nav-btn-icon">🏠</span><span class="nav-btn-label">HOME</span></div>
   <div class="nav-btn" onclick="nav('history')" id="nv-history"><span class="nav-btn-icon">📋</span><span class="nav-btn-label">HISTORY</span></div>
   <div class="nav-btn" onclick="nav('learn')" id="nv-learn"><span class="nav-btn-icon">📚</span><span class="nav-btn-label">LEARN</span></div>
-  <div class="nav-btn" onclick="nav('settings')" id="nv-settings"><span class="nav-btn-icon">⚙️</span><span class="nav-btn-label">SETTINGS</span></div> 
-  <div class="nav-btn" onclick="nav('email')" id="nv-email"><span class="nav-btn-icon">✉️</span><span class="nav-btn-label">EMAIL</span></div>
-  <div class="nav-btn" onclick="nav('paper')" id="nv-paper"><span class="nav-btn-icon">🎓</span><span class="nav-btn-label">PAPER</span></div>
+  <div class="nav-btn" onclick="nav('settings')" id="nv-settings"><span class="nav-btn-icon">⚙️</span><span class="nav-btn-label">SETTINGS</span></div>
 </nav>
 
 <script>
@@ -1192,6 +1288,7 @@ window.addEventListener('load',()=>{
   checkDailyReset();
   updateUsageUI();
   renderHist();
+  renderHomeRecent();
   loadSets();
   const checkoutStatus = new URLSearchParams(location.search).get('checkout');
   if(checkoutStatus==='success'){
@@ -1214,7 +1311,7 @@ window.addEventListener('load',()=>{
 });
 
 // ════════════════════ NAVIGATION
-let curPage='analyze';
+let curPage='home';
 
 // ════════════════════ RESULT SHEETS
 const RESULT_SHEET_IDS=['pg-results','emailResultSheet','paperResultSheet'];
@@ -1280,6 +1377,7 @@ function nav(p){
 
   curPage=p;
   if(p==='history') renderHist();
+  if(p==='home') renderHomeRecent();
 
   navCleanupTimer=setTimeout(()=>{
     navCleanupTimer=null;
@@ -1771,6 +1869,30 @@ function loadHist(id){
   curResult=e.result;
   showResults(e.result);
   document.getElementById('resDate').textContent=new Date(e.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+}
+
+// ════════════════════ HOME: RECENT ACTIVITY TEASER
+function renderHomeRecent(){
+  const el=document.getElementById('homeRecent');
+  if(!el)return;
+  const hist=S.history().slice(0,2);
+  if(!hist.length){el.innerHTML='';return;}
+  el.innerHTML=`
+    <div class="home-section">Recent Activity</div>
+    ${hist.map(e=>{
+      const t=tier(e.score);
+      const d=new Date(e.date).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+      return`<div class="hist-item" onclick="loadHist(${e.id})">
+        <div class="hist-score ${t}">${e.score}</div>
+        <div class="hist-info">
+          <div class="hist-verdict">${e.verdict}</div>
+          <div class="hist-meta">${e.platform} · ${d}</div>
+        </div>
+        <span class="hist-arr">›</span>
+      </div>`;
+    }).join('')}
+    <button class="btn-g" onclick="nav('history')" style="width:100%;margin-top:2px">See all history</button>
+  `;
 }
 
 // ════════════════════ TIPS
