@@ -46,7 +46,15 @@
 /* ─── RESET ─────────────────────────────── */
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{
-  height:100vh;height:100dvh;
+  /* No explicit height here on purpose: `inset:0` on a `position:fixed` box with
+     `height:auto` already stretches it to exactly fill the true viewport per the
+     CSS spec (top/bottom resolve the height directly), which is robust across
+     browser tab AND standalone/PWA display mode. An explicit height:100vh/100dvh
+     here would instead win over that top/bottom-driven sizing (per the CSS
+     over-constraint rules for fixed-position boxes) and reintroduce dependence on
+     vh/dvh viewport-unit computation, which is exactly where standalone-mode
+     under-reporting bugs live — so keep this shell unitless and let inset:0 do
+     the sizing. */
   width:100%;
   position:fixed;inset:0;
   overflow:hidden;
@@ -608,44 +616,30 @@ textarea{min-height:84px;line-height:1.55}
   border-radius:2px;margin:0 auto 22px;
 }
 
-/* ─── RESULT SHEETS (slide-up modal presentation for analysis results) ─────────────────────────────── */
-.sheet-ov{
-  position:fixed;inset:0;
-  background:rgba(14,12,10,.5);
-  z-index:250;display:none;
-  align-items:flex-end;justify-content:center;
+/* ─── RESULT PAGES (Profile/Bio, Email, Paper — full-screen, roomier type) ─────────────────────────────── */
+/* Scoped to .result-page (the .sb content zone of each result page) so only
+   result screens get the larger sizing — every other page keeps its defaults. */
+.result-page{padding-top:20px}
+.result-page .score-hero{padding:30px 20px}
+.result-page .score-tag{font-size:10px}
+.result-page .score-verdict{font-size:20px}
+.result-page .score-summary{font-size:13px;line-height:1.75;max-width:360px}
+.result-page .card-hd h3{font-size:15px}
+.result-page .card-hd{padding:15px 17px}
+.result-page .cb{padding:17px}
+.result-page .check-name{font-size:14px}
+.result-page .check-detail{font-size:12px}
+.result-page .flag-txt{font-size:13px;line-height:1.65}
+.result-page .flag-row{padding:12px 0}
+.result-page .analysis-txt{font-size:13px;line-height:1.95}
+.result-page .modal-legal{font-size:11px}
+.result-page .disc p{font-size:12px}
+.result-page .flag-list>li:not(.flag-row){
+  padding:10px 0;border-bottom:1px solid var(--border);
+  font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.65;color:var(--ink);
 }
-.sheet-ov.on{display:flex}
-.sheet-panel{
-  background:var(--paper);
-  border:1.5px solid var(--border2);
-  border-radius:24px 24px 0 0;
-  width:100%;max-width:480px;
-  max-height:88vh;max-height:88dvh;
-  display:flex;flex-direction:column;
-  animation:shUp .32s cubic-bezier(.4,0,.2,1);
-  box-shadow:var(--shadow-lg);
-}
-.sheet-hd{
-  flex-shrink:0;position:relative;
-  padding:12px 20px 10px;
-  display:flex;flex-direction:column;align-items:center;
-}
-.sheet-handle{width:32px;height:3px;background:var(--border2);border-radius:2px}
-.sheet-close{
-  position:absolute;top:2px;right:8px;
-  width:44px;height:44px;
-  background:none;border:none;
-  color:var(--muted);font-size:16px;
-  cursor:pointer;display:flex;align-items:center;justify-content:center;
-}
-.sheet-title{width:100%;text-align:left;margin-top:8px}
-.sheet-scroll{
-  flex:1;min-height:0;
-  overflow-y:auto;-webkit-overflow-scrolling:touch;
-  overscroll-behavior:contain;
-  padding:0 18px calc(24px + var(--safe-b));
-}
+.result-page .flag-list>li:not(.flag-row):last-child{border:none;padding-bottom:0}
+
 .modal-title{font-size:26px;font-weight:900;text-align:center;margin-bottom:5px}
 .modal-sub{
   font-family:'JetBrains Mono',monospace;font-size:11px;
@@ -984,19 +978,18 @@ textarea{min-height:84px;line-height:1.55}
   </div>
 </div>
 
-<!-- ═══════════════════════════════════ RESULTS SHEET (photo/bio scan) -->
-<div class="sheet-ov" id="pg-results">
-  <div class="sheet-panel">
-    <div class="sheet-hd">
-      <div class="sheet-handle"></div>
-      <button class="sheet-close" onclick="closeSheet('pg-results')" aria-label="Close">✕</button>
-      <div class="sheet-title">
+<!-- ═══════════════════════════════════ PAGE: RESULTS (photo/bio scan) -->
+<div class="page" id="pg-results">
+  <div class="ph">
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="btn-back" onclick="nav('analyze')" aria-label="Back">←</button>
+      <div>
         <div class="ph-title" style="font-size:20px">Results</div>
         <div class="ph-sub" id="resDate"></div>
       </div>
     </div>
-    <div class="sheet-scroll" id="resBody"></div>
   </div>
+  <div class="sb result-page" id="resBody"></div>
 </div>
 
 <!-- ═══════════════════════════════════ PAGE: HISTORY -->
@@ -1222,26 +1215,32 @@ textarea{min-height:84px;line-height:1.55}
   </div>
 </div>
 
-<!-- ═══════════════════════════════════ RESULTS SHEET (email scam check) -->
-<div class="sheet-ov" id="emailResultSheet">
-  <div class="sheet-panel">
-    <div class="sheet-hd">
-      <div class="sheet-handle"></div>
-      <button class="sheet-close" onclick="closeSheet('emailResultSheet')" aria-label="Close">✕</button>
+<!-- ═══════════════════════════════════ PAGE: RESULTS (email scam check) -->
+<div class="page" id="pg-email-result">
+  <div class="ph">
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="btn-back" onclick="nav('email')" aria-label="Back">←</button>
+      <div>
+        <div class="ph-title" style="font-size:20px">Results</div>
+        <div class="ph-sub">Email Check</div>
+      </div>
     </div>
-    <div class="sheet-scroll" id="emailResult"></div>
   </div>
+  <div class="sb result-page" id="emailResult"></div>
 </div>
 
-<!-- ═══════════════════════════════════ RESULTS SHEET (AI paper check) -->
-<div class="sheet-ov" id="paperResultSheet">
-  <div class="sheet-panel">
-    <div class="sheet-hd">
-      <div class="sheet-handle"></div>
-      <button class="sheet-close" onclick="closeSheet('paperResultSheet')" aria-label="Close">✕</button>
+<!-- ═══════════════════════════════════ PAGE: RESULTS (AI paper check) -->
+<div class="page" id="pg-paper-result">
+  <div class="ph">
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="btn-back" onclick="nav('paper')" aria-label="Back">←</button>
+      <div>
+        <div class="ph-title" style="font-size:20px">Results</div>
+        <div class="ph-sub">Paper Check</div>
+      </div>
     </div>
-    <div class="sheet-scroll" id="paperResult"></div>
   </div>
+  <div class="sb result-page" id="paperResult"></div>
 </div>
 
 <!-- ═══════════════════════════════════ BOTTOM NAV -->
@@ -1332,33 +1331,6 @@ window.addEventListener('load',()=>{
 // ════════════════════ NAVIGATION
 let curPage='home';
 
-// ════════════════════ RESULT SHEETS
-const RESULT_SHEET_IDS=['pg-results','emailResultSheet','paperResultSheet'];
-function openSheet(id){
-  document.getElementById(id)?.classList.add('on');
-}
-function closeSheet(id){
-  document.getElementById(id)?.classList.remove('on');
-}
-function closeAllSheets(){
-  RESULT_SHEET_IDS.forEach(closeSheet);
-}
-
-// swipe-down-to-dismiss on each sheet's handle/header
-document.querySelectorAll('.sheet-hd').forEach(hd=>{
-  let startY=null;
-  hd.addEventListener('touchstart',e=>{startY=e.touches[0].clientY},{passive:true});
-  hd.addEventListener('touchend',e=>{
-    if(startY===null)return;
-    const dy=e.changedTouches[0].clientY-startY;
-    startY=null;
-    if(dy>60){
-      const sheet=hd.closest('.sheet-ov');
-      if(sheet)closeSheet(sheet.id);
-    }
-  },{passive:true});
-});
-
 // Resolves any in-flight page transition immediately: strips the transient
 // entering/leaving classes and makes sure only pg-${curPage} keeps 'on'.
 // Called at the start of every nav() so rapid/overlapping taps can never
@@ -1372,13 +1344,6 @@ function finishPageTransition(){
 }
 
 function nav(p){
-  closeAllSheets();
-
-  if(p==='results'){
-    openSheet('pg-results');
-    return;
-  }
-
   if(navCleanupTimer){clearTimeout(navCleanupTimer);navCleanupTimer=null;}
   finishPageTransition();
 
@@ -1692,7 +1657,7 @@ ${emailText}`;
     if(!isPro){S.set('cf_usage',used+1);updateUsageUI();}
 
     renderEmailResult(result,domainInfo);
-    openSheet('emailResultSheet');
+    nav('email-result');
   }catch(e){
     toast('❌ Error: '+(e&&e.message?e.message:'Something went wrong'));
     console.error(e);
@@ -1824,7 +1789,7 @@ ${paperText}`;
     if(!isPro){S.set('cf_usage',used+1);updateUsageUI();}
 
     renderPaperResult(result);
-    openSheet('paperResultSheet');
+    nav('paper-result');
   }catch(e){
     toast('❌ Error: '+(e&&e.message?e.message:'Something went wrong'));
     console.error(e);
