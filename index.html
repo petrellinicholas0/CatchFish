@@ -1175,7 +1175,24 @@ textarea{min-height:84px;line-height:1.55}
     </div>
   </div>
   <div class="sb">
-    <div class="card">
+
+    <div class="plan-opt sel" onclick="selPaperMode(this,'instructor')" id="paperModeInstructor">
+      <div class="plan-radio"></div>
+      <div class="plan-info">
+        <div class="plan-name">I'm reviewing someone's paper</div>
+        <div class="plan-price">Instructor mode — evidence-based analysis</div>
+      </div>
+    </div>
+
+    <div class="plan-opt" onclick="selPaperMode(this,'writer')" id="paperModeWriter">
+      <div class="plan-radio"></div>
+      <div class="plan-info">
+        <div class="plan-name">This is my paper</div>
+        <div class="plan-price">Writer mode — coaching & feedback for you</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
       <div class="cb">
         <div class="r2">
           <div class="fg"><label>School / University</label><input type="text" id="paperSchool" placeholder="e.g. State University"></div>
@@ -1195,8 +1212,8 @@ textarea{min-height:84px;line-height:1.55}
         </div>
         <button class="btn-p" onclick="runPaperAnalysis()">🎓 Check Paper</button>
 
-        <div class="disc" style="margin-top:12px">
-          <p><strong>⚠ Disclaimer:</strong> This report highlights patterns worth a follow-up conversation with the student — it is not proof of AI use or academic dishonesty. Textbook-specific observations may be incomplete or wrong; verify before acting.</p>
+        <div class="disc" style="margin-top:12px" id="paperDiscWrap">
+          <p id="paperDisc"><strong>⚠ Disclaimer:</strong> This report highlights patterns worth a follow-up conversation with the student — it is not proof of AI use or academic dishonesty. Textbook-specific observations may be incomplete or wrong; verify before acting.</p>
         </div>
       </div>
     </div>
@@ -1630,6 +1647,20 @@ Always use probabilistic language in every field — never a bare factual claim.
     btn.disabled=false;btn.textContent='Analyze Email';
   }
 }
+
+// ════════════════════ PAPER CHECK MODE
+const PAPER_DISC={
+  instructor:'<strong>⚠ Disclaimer:</strong> This report highlights patterns worth a follow-up conversation with the student — it is not proof of AI use or academic dishonesty. Textbook-specific observations may be incomplete or wrong; verify before acting.',
+  writer:'<strong>⚠ Disclaimer:</strong> This is a self-check tool to help you strengthen your writing — not a verdict on you. AI-detection signals are often wrong, especially for non-native English writers. Textbook-specific observations may be incomplete; use your judgment.'
+};
+let paperMode='instructor';
+function selPaperMode(el,mode){
+  paperMode=mode;
+  document.querySelectorAll('#pg-paper .plan-opt').forEach(o=>o.classList.remove('sel'));
+  el.classList.add('sel');
+  document.getElementById('paperDisc').innerHTML=PAPER_DISC[mode];
+}
+
 async function runPaperAnalysis(){
   const school=document.getElementById('paperSchool').value.trim();
   const course=document.getElementById('paperCourse').value.trim();
@@ -1645,26 +1676,76 @@ async function runPaperAnalysis(){
   const btn=document.querySelector('#pg-paper .btn-p');
   btn.disabled=true;btn.textContent='Analyzing...';
 
-  const sys=`You are an academic integrity assistant helping a college professor evaluate whether a submitted paper is consistent with the assignment, course, and textbook it was supposedly written for, and whether it shows signs of being AI-generated.
+  const sysInstructor=`You are an academic writing analysis assistant. A reader (often an instructor) is reviewing a submitted paper and wants an evidence-based read on how it lines up with the assignment, course level, and the facts it cites — not a verdict on the person who wrote it.
 
-CRITICAL RULE: Never state a definitive conclusion. Never say a paper "is AI-generated," "is plagiarized," or "is not the student's own work" — you cannot know this with certainty from text analysis alone. Every observation, in every section below, must be framed as a likelihood (e.g. "high/moderate/low likelihood," or a percentage) paired with the specific excerpt or pattern that led to that assessment.
+CRITICAL RULE — READ CAREFULLY: This tool surfaces evidence; it does not make accusations or reach conclusions about a person's honesty. Never say a paper "is AI-generated," "was not written by the student," or use words like "cheating," "dishonest," "plagiarized," or "caught." You cannot know authorship with certainty from text analysis alone. Every observation must be framed as a likelihood (e.g. "high/moderate/low likelihood," or a percentage) tied to the specific excerpt or pattern that produced it. Present findings the way a lab report presents evidence — describing what's there, not what it implies about someone's character or intent. The reader makes any judgment; you only describe what the text shows.
 
-Analyze across five dimensions. Be specific and cite short excerpts (not full sentences) from the paper to support each observation. Do not fabricate certainty — if something is unclear or unverifiable, say so explicitly rather than guessing.
+Your job has exactly four parts:
+1. Roughly how much of the paper reads as consistent with common AI-generation patterns — a percentage/likelihood, never "the paper is AI-generated," always framed as "roughly N% of the paper shows indicators commonly associated with AI-generated text."
+2. What those specific indicators are, each tied to a short excerpt.
+3. Fact-check the paper's verifiable claims (see FACT-CHECKING below) — kept fully separate from part 1; a false statistic is not evidence of AI authorship, and an accurate one is not evidence of human authorship.
+4. Two supporting checks that help interpret the above in context: whether the paper addresses the assignment, and whether its vocabulary/reasoning level and (if a textbook is given) terminology are internally consistent.
 
-1. ASSIGNMENT FIT — Does the paper actually answer what the assignment asked? Note unaddressed parts of the prompt.
-2. COURSE/TEXTBOOK ALIGNMENT — If you recognize the stated textbook, compare terminology/frameworks against how that text typically presents the topic, but flag mismatches as "worth verifying," never as proven fact. If you do NOT confidently recognize the textbook, say so directly and fall back to general subject/course-level consistency. Every claim here must include a confidence caveat.
-3. LEVEL/VOICE CONSISTENCY — Does vocabulary and reasoning depth match the course level? Flag abrupt internal shifts in sophistication, framed as likelihood, not fact.
-4. AI-LIKELIHOOD INDICATORS — Traditional AI-generation signals (generic phrasing, repetitive structure, lack of specific detail). Frame every finding as a likelihood (e.g. "moderate likelihood based on...") tied to a specific excerpt. Label the whole section explicitly as supplementary and non-conclusive — never state or imply the paper "is" AI-generated.
-5. OVERALL VERDICT — 3-5 plain-language sentences a professor could act on, framed as likelihood plus supporting indicators: what's worth a follow-up conversation, and what is NOT strong enough evidence alone. Never state as fact that the paper is or isn't AI-generated or academically dishonest.
+FACT-CHECKING: Identify factual claims in the paper — statistics, dates, historical or scientific claims, quotes, or claims tied to a citation — and assess each independently of the AI-likelihood analysis. For each: state the claim, then mark it "supported" (checks out against what you know), "unsupported" (appears inaccurate), or "unverified" (you cannot confirm it reliably). Use "unverified" honestly whenever you're not sure — it is a legitimate, expected answer, never a failure to guess anyway.
+
+CITATION CHECK: Identify the citation style used (APA, MLA, Chicago notes-bibliography, Chicago author-date, Turabian, or IEEE) or the style stated/implied by the assignment or course. If you can't confidently identify a style, say so plainly rather than guessing, and note whether citations are at least internally consistent with each other regardless. Flag specific formatting problems: mixed styles, malformed in-text citations, malformed reference/bibliography entries. If no citations exist for claims that need one, add an issue noting that, with 1-2 example citation formats for that kind of source. This check covers formatting and internal consistency only — never whether a source is legitimate (that's fact-checking's job above) or whether citing itself was warranted.
+
+Additional context checks:
+- ASSIGNMENT FIT — Does the paper address what the assignment asked? Note any unaddressed parts of the prompt factually, without implying intent.
+- TEXTBOOK/COURSE ALIGNMENT — If you recognize the stated textbook, compare terminology/framing against how that text typically presents the topic; flag mismatches as "worth verifying," never as proof of anything. If you don't confidently recognize the textbook, say so and fall back to general subject/course-level consistency.
+- LEVEL/VOICE CONSISTENCY — Does vocabulary and reasoning depth match the course level? Note abrupt internal shifts in sophistication as an observation, not an implication.
+
+Be specific: cite short excerpts (not full sentences) to support every finding. If something is unclear or unverifiable, say so explicitly rather than guessing.
+
+OVERALL VERDICT: 3-5 plain-language sentences summarizing what the evidence shows, and — just as importantly — what is NOT strong evidence on its own. This should read like the closing paragraph of a lab report, never as a conclusion about the student: e.g. "Several passages show patterns often associated with AI-generated text, and one statistic could not be verified — these are worth a conversation with the student, but on their own are not proof of anything. The rest of the paper is broadly consistent with the assignment and course level."
 
 Respond ONLY with valid JSON, no markdown, no extra text:
 {
   "assignment_fit": {"score": <0-100>, "summary": "<string>", "unaddressed_parts": ["<string>"]},
   "textbook_alignment": {"textbook_recognized": true/false, "confidence_note": "<string>", "findings": ["<string>"]},
   "level_voice_consistency": {"score": <0-100>, "findings": ["<string>"], "notable_shifts": ["<string>"]},
-  "ai_likelihood_indicators": {"score": <0-100>, "findings": ["<string>"]},
+  "ai_likelihood_indicators": {"score": <0-100, meaning roughly what percent of the paper shows AI-generation indicators>, "findings": [{"excerpt": "<short excerpt>", "pattern": "<what indicator this shows>", "tip": "<always an empty string in this mode>"}]},
+  "fact_check": {"claims": [{"claim": "<string>", "assessment": "supported"|"unsupported"|"unverified", "note": "<string>"}]},
+  "citation_check": {"detected_style": "<string, or 'Unclear'>", "style_confidence": "high"|"medium"|"low"|"unclear", "issues": [{"excerpt": "<string>", "problem": "<string>", "corrected_example": "<string>"}]},
   "overall_verdict": "<string>"
 }`;
+
+  const sysWriter=`You are a writing coach helping a student improve their own paper. The person reading this output is the writer themselves — speak directly to them, encouragingly and specifically, the way a good writing-center tutor would.
+
+HARD, NON-NEGOTIABLE RULE — this is a strict content boundary, not a style preference, and it applies to every single dimension below (AI-likelihood coaching, citation coaching, everything): every tip you give must be something that would make the writer a genuinely better writer on its own merits, full stop. Never suggest anything whose purpose is to evade or fool an AI-detection tool — no "add a typo," no "vary sentence length for its own sake," no "insert a filler word," no "swap in a synonym here and there," nothing whose only function is disguising AI origin rather than improving the writing. If a tip would not help the writer even if no AI-detector existed at all, do not give it. Apply this rule while generating every field below, not as an afterthought.
+
+Your job, run for the writer's own benefit:
+1. Roughly how much of the paper reads with patterns commonly associated with AI-generated text — a percentage/likelihood, framed gently (e.g. "about N% of the paper shows patterns like X"), never "your paper is AI-generated." These tools are frequently wrong, especially for non-native English writers or unusual personal styles.
+2. For each flagged passage: quote the actual excerpt, explain in plain language what pattern it shows (uniform sentence length, generic transitions, hedging language, lack of specific personal detail, etc.), and give one genuine, skill-building revision tip that would make that passage stronger regardless of how it was written.
+3. Fact-check the paper's claims (see FACT-CHECKING below) — kept fully separate from part 1; a wrong fact says nothing about who wrote the sentence, and a right one says nothing about it either.
+4. Citation coaching (see CITATION COACHING below).
+5. Supporting context: whether the paper addresses the assignment, and whether the level/voice is consistent — framed as feedback, not evaluation.
+
+FACT-CHECKING: Identify factual claims (statistics, dates, historical/scientific claims, quotes, cited claims) and check each independently of the writing-pattern analysis above. For each: state the claim, then mark "supported," "unsupported," or "unverified." Use "unverified" honestly whenever you can't confirm something — never guess.
+
+CITATION COACHING: Identify the citation style used, or the style stated/implied by the assignment or course (APA, MLA, Chicago notes-bibliography, Chicago author-date, Turabian, or IEEE). If you can't tell, say so plainly. Frame every finding as coaching: what's off, phrased supportively, with a corrected example for each issue. If no style is specified anywhere in the paper or assignment, don't guess which one applies — instead offer 1-2 relevant example formats the writer could choose from. If claims appear with no citation at all, add an issue explaining simply how to cite that kind of source, with an example. This check is about formatting and consistency only — never whether a source is legitimate (that's the fact-check above) or whether citing was ethically necessary; stay descriptive about the writing, never evaluative about the person.
+
+Supporting context, framed as feedback:
+- ASSIGNMENT FIT — Does the paper address what the assignment asked? Point out anything it seems to be missing as something to add, not a deduction.
+- LEVEL/VOICE CONSISTENCY — note any big shifts in vocabulary or reasoning depth as something worth smoothing out for a consistent voice.
+- TEXTBOOK/COURSE ALIGNMENT — if a textbook is given and you recognize it, note anywhere the terminology diverges from how that text presents the topic as a "double check this," not a problem.
+
+Keep in mind throughout: AI-detection signals are frequently wrong, and are known to disproportionately flag writing by non-native English speakers and people with certain personal styles as "AI-like" even when it is entirely their own work. This is a self-check tool for the writer's own use, not a judgment of them — let that shape your tone everywhere, not just in one disclaimer.
+
+Close with 2-3 warm, genuinely encouraging sentences about next steps — this should read like the end of a helpful tutoring session, never like a verdict.
+
+Respond ONLY with valid JSON, no markdown, no extra text:
+{
+  "assignment_fit": {"score": <0-100>, "summary": "<string>", "unaddressed_parts": ["<string>"]},
+  "textbook_alignment": {"textbook_recognized": true/false, "confidence_note": "<string>", "findings": ["<string>"]},
+  "level_voice_consistency": {"score": <0-100>, "findings": ["<string>"], "notable_shifts": ["<string>"]},
+  "ai_likelihood_indicators": {"score": <0-100, meaning roughly what percent of the paper shows AI-generation indicators>, "findings": [{"excerpt": "<short excerpt>", "pattern": "<what pattern this shows, in plain language>", "tip": "<a genuine, skill-building revision tip — never an evasion tip>"}]},
+  "fact_check": {"claims": [{"claim": "<string>", "assessment": "supported"|"unsupported"|"unverified", "note": "<string>"}]},
+  "citation_check": {"detected_style": "<string, or 'Unclear'>", "style_confidence": "high"|"medium"|"low"|"unclear", "issues": [{"excerpt": "<string>", "problem": "<string>", "corrected_example": "<string>"}]},
+  "overall_verdict": "<string, ending with encouraging next-steps framing>"
+}`;
+
+  const sys=paperMode==='writer'?sysWriter:sysInstructor;
 
   const content=`School/University: ${school||'Not given'}
 Class/Course: ${course||'Not given'}
@@ -1699,12 +1780,73 @@ ${paperText}`;
   }
 }
 
+// ────── PAPER CHECK: shared render helpers (used by both modes) ──────
+function paperListHTML(arr){
+  return (arr||[]).map(f=>`<li class="flag-row"><span class="flag-em">•</span><span class="flag-txt">${f}</span></li>`).join('');
+}
+
+function paperAiFindingsHTML(findings){
+  if(!findings||!findings.length) return `<div class="analysis-txt" style="color:var(--muted)">No specific indicators found.</div>`;
+  return findings.map(f=>`
+    <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+      ${f.excerpt?`<div class="analysis-txt" style="font-style:italic;color:var(--muted);margin-bottom:4px">"${f.excerpt}"</div>`:''}
+      <div class="analysis-txt">${f.pattern||''}</div>
+      ${f.tip?`<div class="analysis-txt" style="color:var(--teal);margin-top:4px"><strong>Tip:</strong> ${f.tip}</div>`:''}
+    </div>`).join('');
+}
+
+function paperFactCheckHTML(fc,introText){
+  const claims=(fc&&fc.claims)||[];
+  const icons={supported:'✅',unsupported:'❌',unverified:'❔'};
+  const pillClass={supported:'pass',unsupported:'fail',unverified:'skip'};
+  const claimsHTML=claims.length?`<div class="checks">${claims.map(c=>`
+    <div class="check-row">
+      <span class="check-icon">${icons[c.assessment]||'❔'}</span>
+      <div class="check-info">
+        <div class="check-name">${c.claim||''}</div>
+        <div class="check-detail">${c.note||''}</div>
+      </div>
+      <span class="check-pill ${pillClass[c.assessment]||'skip'}">${(c.assessment||'unverified').toUpperCase()}</span>
+    </div>`).join('')}</div>`
+    :`<div class="analysis-txt" style="color:var(--muted)">No independently checkable factual claims were identified.</div>`;
+  return `
+    <div class="card">
+      <div class="card-hd"><span class="card-hd-icon">🔍</span><h3>Fact Check</h3></div>
+      <div class="cb">
+        <div class="analysis-txt" style="color:var(--muted);margin-bottom:8px">${introText}</div>
+        ${claimsHTML}
+      </div>
+    </div>`;
+}
+
+function paperCitationCheckHTML(cc){
+  const issues=(cc&&cc.issues)||[];
+  const issuesHTML=issues.length?issues.map(i=>`
+    <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+      ${i.excerpt?`<div class="analysis-txt" style="font-style:italic;color:var(--muted);margin-bottom:4px">"${i.excerpt}"</div>`:''}
+      <div class="analysis-txt">${i.problem||''}</div>
+      ${i.corrected_example?`<div class="analysis-txt" style="color:var(--teal);margin-top:4px"><strong>Example:</strong> ${i.corrected_example}</div>`:''}
+    </div>`).join('')
+    :`<div class="analysis-txt" style="color:var(--muted)">No formatting issues found.</div>`;
+  return `
+    <div class="card">
+      <div class="card-hd"><span class="card-hd-icon">📖</span><h3>Citation Check</h3><span class="card-hd-tag">${(cc&&cc.detected_style)||'Unclear'}</span></div>
+      <div class="cb">
+        <div class="analysis-txt" style="color:var(--muted);margin-bottom:8px">Style confidence: ${(cc&&cc.style_confidence)||'unclear'}. Checks formatting & internal consistency only — not source legitimacy.</div>
+        ${issuesHTML}
+      </div>
+    </div>`;
+}
+
 function renderPaperResult(r){
+  if(paperMode==='writer') renderPaperResultWriter(r);
+  else renderPaperResultInstructor(r);
+}
+
+function renderPaperResultInstructor(r){
   const af=r.assignment_fit||{}, ta=r.textbook_alignment||{}, lv=r.level_voice_consistency||{}, ai=r.ai_likelihood_indicators||{};
   const avgScore=Math.round(((af.score||0)+(lv.score||0)+(100-(ai.score||0)))/3);
   const t=tier(avgScore);
-
-  const listHTML=(arr)=>(arr||[]).map(f=>`<li class="flag-row"><span class="flag-em">•</span><span class="flag-txt">${f}</span></li>`).join('');
 
   document.getElementById('paperResult').innerHTML=`
     <div class="score-hero ${t}">
@@ -1718,7 +1860,7 @@ function renderPaperResult(r){
       <div class="card-hd"><span class="card-hd-icon">📝</span><h3>Assignment Fit</h3><span class="card-hd-tag">${af.score ?? '—'}/100</span></div>
       <div class="cb">
         <div class="analysis-txt">${af.summary||''}</div>
-        ${af.unaddressed_parts&&af.unaddressed_parts.length?`<ul class="flag-list" style="margin-top:8px">${listHTML(af.unaddressed_parts)}</ul>`:''}
+        ${af.unaddressed_parts&&af.unaddressed_parts.length?`<ul class="flag-list" style="margin-top:8px">${paperListHTML(af.unaddressed_parts)}</ul>`:''}
       </div>
     </div>
 
@@ -1726,23 +1868,82 @@ function renderPaperResult(r){
       <div class="card-hd"><span class="card-hd-icon">📚</span><h3>Textbook Alignment</h3><span class="card-hd-tag">${ta.textbook_recognized?'Recognized':'Not recognized'}</span></div>
       <div class="cb">
         <div class="analysis-txt" style="color:var(--muted);margin-bottom:8px">${ta.confidence_note||''}</div>
-        <ul class="flag-list">${listHTML(ta.findings)}</ul>
+        <ul class="flag-list">${paperListHTML(ta.findings)}</ul>
       </div>
     </div>
 
     <div class="card">
       <div class="card-hd"><span class="card-hd-icon">🎯</span><h3>Level & Voice Consistency</h3><span class="card-hd-tag">${lv.score ?? '—'}/100</span></div>
       <div class="cb">
-        <ul class="flag-list">${listHTML(lv.findings)}</ul>
-        ${lv.notable_shifts&&lv.notable_shifts.length?`<div class="analysis-txt" style="margin-top:8px;color:var(--muted)"><strong>Notable shifts:</strong></div><ul class="flag-list">${listHTML(lv.notable_shifts)}</ul>`:''}
+        <ul class="flag-list">${paperListHTML(lv.findings)}</ul>
+        ${lv.notable_shifts&&lv.notable_shifts.length?`<div class="analysis-txt" style="margin-top:8px;color:var(--muted)"><strong>Notable shifts:</strong></div><ul class="flag-list">${paperListHTML(lv.notable_shifts)}</ul>`:''}
       </div>
     </div>
 
     <div class="card">
-      <div class="card-hd"><span class="card-hd-icon">🤖</span><h3>AI-Likelihood Indicators</h3><span class="card-hd-tag">${ai.score ?? '—'}/100</span></div>
+      <div class="card-hd"><span class="card-hd-icon">🤖</span><h3>AI-Likelihood Indicators</h3><span class="card-hd-tag">${ai.score ?? '—'}% of paper</span></div>
       <div class="cb">
-        <div class="analysis-txt" style="color:var(--muted);margin-bottom:8px">Supplementary signal — not proof of AI generation.</div>
-        <ul class="flag-list">${listHTML(ai.findings)}</ul>
+        <div class="analysis-txt" style="color:var(--muted);margin-bottom:8px">Supplementary evidence, presented for context — not proof of anything on its own.</div>
+        ${paperAiFindingsHTML(ai.findings)}
+      </div>
+    </div>
+
+    ${paperFactCheckHTML(r.fact_check,"Independent of the AI-likelihood assessment above — a false statistic is a factual-accuracy issue, not evidence of AI authorship, and an accurate fact isn't evidence of human authorship.")}
+
+    ${paperCitationCheckHTML(r.citation_check)}
+  `;
+}
+
+function renderPaperResultWriter(r){
+  const af=r.assignment_fit||{}, ta=r.textbook_alignment||{}, lv=r.level_voice_consistency||{}, ai=r.ai_likelihood_indicators||{};
+  const avgScore=Math.round(((af.score||0)+(lv.score||0)+(100-(ai.score||0)))/3);
+  const t=tier(avgScore);
+
+  document.getElementById('paperResult').innerHTML=`
+    <div class="score-hero ${t}">
+      <div class="score-tag">Self-Check Score</div>
+      <div class="score-num ${t}">${avgScore}</div>
+      <div class="score-summary">${r.overall_verdict||''}</div>
+    </div>
+    <p class="modal-legal">This is a probability estimate based on automated indicators, not a fact. Always use your own judgment.</p>
+
+    <div class="disc">
+      <p><strong>⚠ Before you read further:</strong> AI-detection signals are frequently wrong, and are known to disproportionately flag writing by non-native English speakers and people with certain personal styles — even when it's entirely their own work. Treat this as a self-check, not a verdict on you.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-hd"><span class="card-hd-icon">🤖</span><h3>Writing Pattern Check</h3><span class="card-hd-tag">${ai.score ?? '—'}% flagged</span></div>
+      <div class="cb">
+        <div class="analysis-txt" style="color:var(--muted);margin-bottom:8px">Patterns commonly associated with AI-generated text, each with a genuine tip to strengthen the writing either way.</div>
+        ${paperAiFindingsHTML(ai.findings)}
+      </div>
+    </div>
+
+    ${paperFactCheckHTML(r.fact_check,"Checked separately from the writing-pattern review above — a wrong fact and how a sentence \"sounds\" are unrelated to each other.")}
+
+    ${paperCitationCheckHTML(r.citation_check)}
+
+    <div class="card">
+      <div class="card-hd"><span class="card-hd-icon">📝</span><h3>Assignment Fit</h3><span class="card-hd-tag">${af.score ?? '—'}/100</span></div>
+      <div class="cb">
+        <div class="analysis-txt">${af.summary||''}</div>
+        ${af.unaddressed_parts&&af.unaddressed_parts.length?`<ul class="flag-list" style="margin-top:8px">${paperListHTML(af.unaddressed_parts)}</ul>`:''}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd"><span class="card-hd-icon">📚</span><h3>Textbook Alignment</h3><span class="card-hd-tag">${ta.textbook_recognized?'Recognized':'Not recognized'}</span></div>
+      <div class="cb">
+        <div class="analysis-txt" style="color:var(--muted);margin-bottom:8px">${ta.confidence_note||''}</div>
+        <ul class="flag-list">${paperListHTML(ta.findings)}</ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd"><span class="card-hd-icon">🎯</span><h3>Level & Voice Consistency</h3><span class="card-hd-tag">${lv.score ?? '—'}/100</span></div>
+      <div class="cb">
+        <ul class="flag-list">${paperListHTML(lv.findings)}</ul>
+        ${lv.notable_shifts&&lv.notable_shifts.length?`<div class="analysis-txt" style="margin-top:8px;color:var(--muted)"><strong>Notable shifts:</strong></div><ul class="flag-list">${paperListHTML(lv.notable_shifts)}</ul>`:''}
       </div>
     </div>
   `;
