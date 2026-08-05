@@ -1631,17 +1631,17 @@ async function runEmailAnalysis(){
 
 CRITICAL RULE: Never state a definitive conclusion. Never say things like "this is a scam," "this is phishing," or "this is safe/legitimate" — you cannot know this with certainty from the text alone. The verdict and summary must be framed as a likelihood (e.g. "high/moderate/low likelihood," or a percentage) paired with the specific indicators that led to that assessment.
 
-FIRST, CLASSIFY THE EMAIL: Before anything else, determine whether this email claims to represent a business or organization (a company, bank, service provider, government agency, etc.) versus personal/individual correspondence between people. This determines which checks below apply.
+FIRST, CLASSIFY THE EMAIL: Before anything else, determine whether this email claims to represent a business or organization (a company, bank, service provider, government agency, etc.), is personal/individual correspondence between people, or is genuinely unclear. Report this as sender_verification.claim_type: "business", "personal", or "unclear". This determines which checks below apply.
 
-IF THE EMAIL CLAIMS TO REPRESENT A BUSINESS/ORGANIZATION, additionally assess:
-- DOMAIN AGE: You may be given the sender domain's registration date below. If the domain was registered recently (roughly under 6 months ago) and the email claims to be from an established business, treat this as a signal worth flagging — frame it as a signal, not proof, and state the actual registration date you were given. If no registration date was given, do not speculate about domain age at all.
-- DOMAIN-VS-CLAIM MISMATCH: Compare the business/organization name the email claims to represent against the actual sending domain. Flag mismatches, including lookalike domains that substitute characters or add extra words (e.g. "amaz0n-support.net" claiming to be Amazon, "paypal-secure-verify.com" claiming to be PayPal).
-- FREE-MAIL-AS-BUSINESS: If the sender address uses a free consumer email provider (gmail.com, yahoo.com, outlook.com, hotmail.com, icloud.com, etc.) while the email signs off as a representative of a company or organization, flag this as a signal — legitimate businesses overwhelmingly send from their own domain.
-- AUTHENTICATION ALIGNMENT: If email headers were provided below, look for SPF/DKIM/DMARC results and note whether they pass or fail, and whether the authenticated sending domain matches the domain the email claims to be from. If headers were NOT provided, state plainly in your findings that authentication could not be checked because no headers were given — never say it "passed" or imply it was checked when it wasn't.
+IF claim_type IS "business", assess and populate all of the following:
+- sender_verification.domain_age: set checked:true only if you were given a sender domain registration date below; otherwise false. registration_date is that date verbatim, or null if none was given. note is a short evidence-tied assessment — if the domain was registered recently (roughly under 6 months ago) and the email claims to be from an established business, say so as a signal, not proof, citing the actual date; if no date was given, note must say the check could not be performed, and you must not speculate about domain age.
+- sender_verification.domain_match: set checked:true if you can identify both a claimed business name and the sending domain, otherwise false. claimed_business is the business/organization name the email claims to represent (empty string if none). sending_domain is the actual sending domain (empty string if unknown). mismatch_likelihood is one of "high", "moderate", "low", or "none" — flag lookalike domains that substitute characters or add extra words (e.g. "amaz0n-support.net" claiming to be Amazon, "paypal-secure-verify.com" claiming to be PayPal) as "high" or "moderate"; use "none" when checked and no mismatch is found.
+- sender_verification.free_mail_as_business: true if the sender address uses a free consumer email provider (gmail.com, yahoo.com, outlook.com, hotmail.com, icloud.com, etc.) while the email signs off as a representative of a company or organization; false otherwise. Legitimate businesses overwhelmingly send from their own domain.
+- sender_verification.auth_alignment: set checked:true only if email headers were provided below and contained SPF/DKIM/DMARC results, otherwise false. result is a short description of whether they passed/failed and whether the authenticated domain matches the claimed sender domain, or null when checked is false. If headers were NOT provided, checked must be false and result must be null — never say authentication "passed" or imply it was checked when it wasn't.
 
-IF THE EMAIL IS PERSONAL/INDIVIDUAL CORRESPONDENCE (not claiming to represent a business): skip all four checks above entirely. Do not mention domain age, business-domain mismatch, free-mail-as-business, or authentication alignment for personal emails, and never flag a personal email as having an "unverified business" or similar — these checks simply do not apply, and their absence is not itself suspicious. Assess only using standard scam-pattern, urgency, and social-engineering indicators.
+IF claim_type IS "personal" OR "unclear": do not run any of the four checks above. Set domain_age.checked, domain_match.checked, and auth_alignment.checked to false, their other fields to null or empty as appropriate, and free_mail_as_business to false. Never flag a personal or unclear-claim email as having an "unverified business" or similar — these checks simply do not apply, and their absence is not itself suspicious. Assess only using standard scam-pattern, urgency, and social-engineering indicators.
 
-Fold every applicable finding above into the same red_flags/green_flags lists and the same overall score/verdict/summary as the rest of your analysis — this is one cohesive assessment, not a separate report bolted on. Every finding must stay probabilistic and evidence-tied, exactly like the rest of your analysis: "high/moderate/low likelihood" or a percentage, paired with the specific indicator.
+In every case, also fold every applicable sender_verification finding into the same red_flags/green_flags lists and the same overall score/verdict/summary as the rest of your analysis, in plain language — sender_verification is the structured data, red_flags/green_flags is the narrative summary of the same findings, and the two must agree with each other. This is one cohesive assessment, not a separate report bolted on. Every finding must stay probabilistic and evidence-tied: "high/moderate/low likelihood" or a percentage, paired with the specific indicator.
 
 Return ONLY valid JSON with this exact structure — no markdown, no extra text:
 {
@@ -1649,7 +1649,14 @@ Return ONLY valid JSON with this exact structure — no markdown, no extra text:
   "verdict": "<short probabilistic verdict, e.g. 'Low Likelihood of Phishing' or 'High Likelihood of Phishing — Multiple Red Flags'>",
   "summary": "<2-3 sentences, plain language, framed as likelihood plus supporting indicators — not a fact>",
   "red_flags": ["<flag>"],
-  "green_flags": ["<positive sign>"]
+  "green_flags": ["<positive sign>"],
+  "sender_verification": {
+    "claim_type": "business"|"personal"|"unclear",
+    "domain_age": {"checked": true|false, "registration_date": "<string or null>", "note": "<string>"},
+    "domain_match": {"checked": true|false, "claimed_business": "<string>", "sending_domain": "<string>", "mismatch_likelihood": "high"|"moderate"|"low"|"none"},
+    "auth_alignment": {"checked": true|false, "result": "<string or null>"},
+    "free_mail_as_business": true|false
+  }
 }
 Always use probabilistic language in every field — never a bare factual claim.`;
 
@@ -2009,6 +2016,22 @@ function renderEmailResult(r,domainInfo){
     }
   }
 
+  let verificationHTML='';
+  const sv=r.sender_verification;
+  if(sv&&sv.claim_type==='business'){
+    const lines=[];
+    if(sv.domain_match&&sv.domain_match.checked&&sv.domain_match.mismatch_likelihood&&sv.domain_match.mismatch_likelihood!=='none'){
+      lines.push(`Business claim ("${sv.domain_match.claimed_business}") could not be verified against sending domain ("${sv.domain_match.sending_domain}") — ${sv.domain_match.mismatch_likelihood} likelihood of mismatch`);
+    }
+    if(sv.free_mail_as_business){
+      lines.push(`Sender signs as a business representative but uses a free consumer email provider`);
+    }
+    if(sv.auth_alignment){
+      lines.push(sv.auth_alignment.checked&&sv.auth_alignment.result?`Authentication (SPF/DKIM/DMARC): ${sv.auth_alignment.result}`:`Authentication (SPF/DKIM/DMARC) could not be checked — no email headers were provided`);
+    }
+    verificationHTML=lines.map(l=>`<p class="modal-legal">${l}</p>`).join('');
+  }
+
   document.getElementById('emailResult').innerHTML=`
     <div class="score-hero ${t}">
       <div class="score-tag">Safety Score</div>
@@ -2018,6 +2041,7 @@ function renderEmailResult(r,domainInfo){
     </div>
     <p class="modal-legal">This is a probability estimate based on automated indicators, not a fact. Always use your own judgment.</p>
     ${domainLineHTML}
+    ${verificationHTML}
     ${redHTML}
     ${greenHTML}
   `;
