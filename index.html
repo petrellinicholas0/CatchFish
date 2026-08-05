@@ -46,15 +46,15 @@
 /* ─── RESET ─────────────────────────────── */
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{
-  /* No explicit height here on purpose: `inset:0` on a `position:fixed` box with
-     `height:auto` already stretches it to exactly fill the true viewport per the
-     CSS spec (top/bottom resolve the height directly), which is robust across
-     browser tab AND standalone/PWA display mode. An explicit height:100vh/100dvh
-     here would instead win over that top/bottom-driven sizing (per the CSS
-     over-constraint rules for fixed-position boxes) and reintroduce dependence on
-     vh/dvh viewport-unit computation, which is exactly where standalone-mode
-     under-reporting bugs live — so keep this shell unitless and let inset:0 do
-     the sizing. */
+  /* height:100dvh is only the pre-JS fallback (and a value CSS alone can compute
+     is/was proven unreliable on real installed-PWA standalone launches on
+     Android — see setAppHeight() below). --app-height is set from the actual
+     measured window.innerHeight in JS immediately on load and re-measured on
+     resize/orientationchange/visualViewport changes, and takes over as the
+     authoritative source once available, since a JS-measured pixel value can't
+     be thrown off by engine-specific vh/dvh computation bugs the way a pure CSS
+     unit can. */
+  height:100dvh;height:var(--app-height,100dvh);
   width:100%;
   position:fixed;inset:0;
   overflow:hidden;
@@ -1252,6 +1252,26 @@ textarea{min-height:84px;line-height:1.55}
 </nav>
 
 <script>
+// ════════════════════ VIEWPORT HEIGHT (real device height, not a CSS vh/dvh guess)
+// 100dvh has proven unreliable specifically on installed-PWA standalone launches
+// on real Android devices (confirmed: content area under-filled the screen even
+// after switching html,body to a spec-correct inset:0/height:auto approach).
+// window.innerHeight is the actual measured viewport in pixels — immune to
+// per-engine vh/dvh computation bugs — so drive the shell's height from that
+// directly via a CSS custom property, and re-measure whenever the browser tells
+// us the viewport changed (including a couple of short delayed re-checks, since
+// some WebViews report a transient/incorrect height on first paint in standalone
+// mode before settling to the correct value a moment later).
+function setAppHeight(){
+  document.documentElement.style.setProperty('--app-height', window.innerHeight+'px');
+}
+setAppHeight();
+window.addEventListener('resize',setAppHeight);
+window.addEventListener('orientationchange',setAppHeight);
+if(window.visualViewport) window.visualViewport.addEventListener('resize',setAppHeight);
+setTimeout(setAppHeight,100);
+setTimeout(setAppHeight,500);
+
 // ════════════════════ CONFIG
 const FREE_LIMIT = 3;
 const RESET_HOURS = 24;
