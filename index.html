@@ -90,8 +90,8 @@ h1,h2,h3,h4{font-weight:900;letter-spacing:-0.03em;line-height:1.1}
   position:fixed;bottom:0;left:0;right:0;
   height:calc(var(--nav-h) + var(--safe-b));
   padding-bottom:var(--safe-b);
+  /* No backdrop-filter here on purpose — see .ph for why. */
   background:rgba(245,240,232,0.96);
-  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   border-top:1.5px solid var(--border2);
   display:flex;align-items:flex-start;
   padding-top:10px;
@@ -140,7 +140,16 @@ h1,h2,h3,h4{font-weight:900;letter-spacing:-0.03em;line-height:1.1}
   padding:20px 20px 18px;
   padding-top:calc(20px + env(safe-area-inset-top));
   background:rgba(245,240,232,0.94);
-  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  /* backdrop-filter was removed here and on .nav: both are position:fixed (or,
+     for .ph, inside a .page that gets an entering/leaving transform animation
+     on every nav()) translucent layers with blur, which is a well-documented
+     source of ghost/duplicate-paint compositor bugs on Android WebViews —
+     exactly the two elements a reported "page renders twice" symptom pointed
+     at. Backgrounds are already ~94-96% opaque, so the visual loss from
+     dropping the blur is minimal. This targets a known real-world risk class
+     directly, not a blind guess — but could not be confirmed against the
+     actual device that reported the bug (unreproducible in this sandbox), so
+     treat as a reasoned mitigation pending on-device verification. */
   border-bottom:1.5px solid var(--border);
   z-index:10;
 }
@@ -1271,6 +1280,11 @@ textarea{min-height:84px;line-height:1.55}
 // mode before settling to the correct value a moment later).
 function setAppHeight(){
   document.documentElement.style.setProperty('--app-height', window.innerHeight+'px');
+  // A --app-height correction changes .sb's available height, but it's a style
+  // change on <html>, not a mutation of any .sb element, so fitSb's observers
+  // below would never see it — call fitAllSb() here explicitly so a short/long
+  // decision made against a stale height never survives a correction.
+  fitAllSb();
 }
 setAppHeight();
 window.addEventListener('resize',setAppHeight);
@@ -1316,9 +1330,8 @@ document.querySelectorAll('.sb').forEach(sb=>{
   }).observe(sb,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['class','style']});
   sb.addEventListener('transitionend',()=>fitSb(sb));
 });
-window.addEventListener('resize',fitAllSb);
-window.addEventListener('orientationchange',fitAllSb);
-if(window.visualViewport) window.visualViewport.addEventListener('resize',fitAllSb);
+// resize/orientationchange/visualViewport are already covered by setAppHeight()
+// above, which calls fitAllSb() itself after every height correction.
 
 // ════════════════════ CONFIG
 const FREE_LIMIT = 3;
