@@ -933,7 +933,7 @@ textarea{min-height:84px;line-height:1.55}
     <div class="ph-title">CatchFish 🎣</div>
     <div class="ph-sub">3 tools to catch scams before they catch you</div>
   </div>
-  <div class="sb">
+  <div class="sb sb-top">
 
     <!-- Usage strip (applies globally, not per-tool) -->
     <div class="usage-strip" id="uStrip">
@@ -994,7 +994,7 @@ textarea{min-height:84px;line-height:1.55}
     </div>
     <img src="assets/mascot/standing.png" alt="" class="ph-hero-mascot">
   </div>
-  <div class="sb">
+  <div class="sb sb-top">
 
     <!-- Photo upload -->
     <div class="card">
@@ -1219,7 +1219,7 @@ textarea{min-height:84px;line-height:1.55}
       </div>
     </div>
   </div>
-  <div class="sb">
+  <div class="sb sb-top">
     <div class="card">
       <label>Sender address (optional)</label>
       <input type="text" id="emailSender" placeholder="e.g. support@amaz0n-security.com">
@@ -1241,7 +1241,7 @@ textarea{min-height:84px;line-height:1.55}
       </div>
     </div>
   </div>
-  <div class="sb">
+  <div class="sb sb-top">
 
     <div class="plan-opt sel" onclick="selPaperMode(this,'instructor')" id="paperModeInstructor">
       <div class="plan-radio"></div>
@@ -1359,6 +1359,22 @@ setTimeout(setAppHeight,500);
 // this can never make overflowing content inaccessible.
 function fitSb(sb){
   if(!sb) return;
+  // .sb-top (Home, and the Profile Analyzer/Email Check/Paper Check input
+  // forms) opts out of centering entirely, regardless of measured height.
+  // These are landing/dashboard and data-entry pages — a user expects them to
+  // start at the top every time, not silently reflow to a centered block
+  // depending on how much content happens to fit. Confirmed on a real
+  // standalone-mode device: Home's usage-strip+tool-cards block (genuinely
+  // shorter than a chrome-less standalone viewport) was centering exactly as
+  // designed, but looked broken there rather than intentional — so these
+  // specific pages are carved out of the auto-centering system rather than
+  // trying to tune the measurement. Result screens (including the
+  // minor-protection blocked message) and History's empty state keep the
+  // original measure-then-center-if-short behavior.
+  if(sb.classList.contains('sb-top')){
+    sb.classList.remove('fill-center');
+    return;
+  }
   // Must measure with fill-center OFF: once it's applied (display:flex +
   // justify-content:center), scrollHeight no longer reliably reports overflow
   // for centered flex content in some engines, which would make growing
