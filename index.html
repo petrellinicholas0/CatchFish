@@ -156,6 +156,27 @@ h1,h2,h3,h4{font-weight:900;letter-spacing:-0.03em;line-height:1.1}
 .ph-title{font-size:26px;font-weight:900}
 .ph-sub{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-top:3px;letter-spacing:0.06em}
 
+/* ─── COLOR-BLOCKED HERO HEADER (mascot-bearing variant of .ph) ─────────────────────────────── */
+/* The mascot image is sized/positioned to stay fully inside this box (never
+   bleeding past its bottom edge) since .ph doesn't scroll — anything hanging
+   outside its box would sit as a static overlay on top of .sb's scrolling
+   content instead of scrolling away with it. */
+.ph-hero{
+  position:relative;overflow:hidden;
+  min-height:150px;
+  background:linear-gradient(135deg,var(--coral) 0%,#ff8969 48%,#4fc3d9 100%);
+  border-bottom:none;
+}
+.ph-hero .ph-title{color:#fff}
+.ph-hero .ph-sub{color:rgba(255,255,255,0.88)}
+.ph-hero .btn-back{background:rgba(255,255,255,0.22);border-color:rgba(255,255,255,0.4);color:#fff}
+.ph-hero-mascot{
+  position:absolute;right:4px;bottom:2px;
+  height:122px;width:auto;
+  filter:drop-shadow(0 8px 14px rgba(14,12,10,0.25));
+  pointer-events:none;
+}
+
 /* ─── CONTENT ZONE (the only thing that scrolls) ─────────────────────────────── */
 .sb{
   flex:1;min-height:0;
@@ -175,6 +196,7 @@ h1,h2,h3,h4{font-weight:900;letter-spacing:-0.03em;line-height:1.1}
 .card{
   background:#fff;
   border:1.5px solid var(--border);
+  border-left:4px solid var(--coral);
   border-radius:var(--r);
   overflow:hidden;margin-bottom:12px;
   box-shadow:var(--shadow);
@@ -184,7 +206,12 @@ h1,h2,h3,h4{font-weight:900;letter-spacing:-0.03em;line-height:1.1}
   border-bottom:1px solid var(--border);
   display:flex;align-items:center;gap:10px;
 }
-.card-hd-icon{font-size:18px}
+.card-hd-icon{
+  font-size:16px;flex-shrink:0;
+  width:30px;height:30px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--coral-lt);
+}
 .card-hd h3{font-size:14px;font-weight:700;flex:1}
 .card-hd-tag{
   font-family:'JetBrains Mono',monospace;
@@ -324,14 +351,15 @@ textarea{min-height:84px;line-height:1.55}
 }
 .loading-ov.on{display:flex}
 
-.fish-loader{
-  font-size:52px;
-  animation:fishSwim 1.2s ease-in-out infinite alternate;
-  margin-bottom:20px;
+.mascot-loader{
+  width:168px;height:auto;
+  margin-bottom:16px;
+  animation:mascotBob 1.3s ease-in-out infinite alternate;
+  filter:drop-shadow(0 10px 18px rgba(14,12,10,0.2));
 }
-@keyframes fishSwim{
-  from{transform:translateX(-12px) scaleX(1)}
-  to{transform:translateX(12px) scaleX(-1)}
+@keyframes mascotBob{
+  from{transform:translateY(-7px) rotate(-3deg)}
+  to{transform:translateY(7px) rotate(3deg)}
 }
 
 .loading-title{font-size:22px;font-weight:900;margin-bottom:6px}
@@ -368,6 +396,11 @@ textarea{min-height:84px;line-height:1.55}
 .score-hero.hi::before{background:var(--teal)}
 .score-hero.md::before{background:var(--amber)}
 .score-hero.lo::before{background:var(--rose)}
+
+/* Only ever shown on a 'hi' tier result — a celebratory "case closed" beat,
+   deliberately absent from md/lo so the mascot's personality never sits next
+   to a flagged or risky result. */
+.score-hero-mascot{width:96px;height:auto;margin:0 auto 8px}
 
 .score-tag{
   font-family:'JetBrains Mono',monospace;
@@ -507,6 +540,7 @@ textarea{min-height:84px;line-height:1.55}
 /* ─── HISTORY ─────────────────────────────── */
 .empty{text-align:center;padding:56px 20px}
 .empty-icon{font-size:44px;display:block;margin-bottom:12px}
+.empty-mascot{width:150px;height:auto;margin:0 auto 14px}
 .empty-title{font-size:18px;font-weight:900;margin-bottom:6px}
 .empty-sub{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);line-height:1.6}
 
@@ -534,6 +568,7 @@ textarea{min-height:84px;line-height:1.55}
 /* ─── LEARN ─────────────────────────────── */
 .tip-card{
   background:#fff;border:1.5px solid var(--border);
+  border-left:4px solid var(--teal);
   border-radius:var(--r);margin-bottom:10px;overflow:hidden;
   box-shadow:var(--shadow);
 }
@@ -543,7 +578,12 @@ textarea{min-height:84px;line-height:1.55}
   cursor:pointer;user-select:none;
   background:var(--paper2);
 }
-.tip-hd-icon{font-size:19px}
+.tip-hd-icon{
+  font-size:17px;flex-shrink:0;
+  width:32px;height:32px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--teal-lt);
+}
 .tip-hd span{font-size:13px;font-weight:700;flex:1}
 .chev{color:var(--muted);font-size:11px;transition:transform .22s}
 .tip-card.open .chev{transform:rotate(180deg)}
@@ -581,6 +621,7 @@ textarea{min-height:84px;line-height:1.55}
 .set-row{
   min-height:44px;
   background:#fff;border:1.5px solid var(--border);
+  border-left:3px solid var(--amber);
   border-radius:var(--r-sm);padding:13px 15px;
   display:flex;align-items:center;justify-content:space-between;
   margin-bottom:7px;cursor:pointer;box-shadow:var(--shadow);
@@ -867,7 +908,7 @@ textarea{min-height:84px;line-height:1.55}
 
 <!-- ═══════════════════════════════════ LOADING -->
 <div class="loading-ov" id="loadOv">
-  <div class="fish-loader">🐟</div>
+  <img src="assets/mascot/fishing.png" alt="" class="mascot-loader">
   <div class="loading-title">Reeling it in…</div>
   <p class="loading-sub mono">Analyzing profile · ~15 seconds</p>
   <div class="ls-wrap" id="lsWrap">
@@ -943,7 +984,7 @@ textarea{min-height:84px;line-height:1.55}
 
 <!-- ═══════════════════════════════════ PAGE: ANALYZE -->
 <div class="page" id="pg-analyze">
-  <div class="ph">
+  <div class="ph ph-hero">
     <div style="display:flex;align-items:center;gap:10px">
       <button class="btn-back" onclick="nav('home')" aria-label="Back to Home">←</button>
       <div>
@@ -951,6 +992,7 @@ textarea{min-height:84px;line-height:1.55}
         <div class="ph-sub">dating profile analyzer</div>
       </div>
     </div>
+    <img src="assets/mascot/standing.png" alt="" class="ph-hero-mascot">
   </div>
   <div class="sb">
 
@@ -2121,8 +2163,11 @@ function renderEmailResult(r,domainInfo){
     verificationHTML=lines.map(l=>`<p class="modal-legal">${l}</p>`).join('');
   }
 
+  const mascotHTML=t==='hi'?`<img src="assets/mascot/casesolved.png" alt="" class="score-hero-mascot">`:'';
+
   document.getElementById('emailResult').innerHTML=`
     <div class="score-hero ${t}">
+      ${mascotHTML}
       <div class="score-tag">Safety Score</div>
       <div class="score-num">${r.score}</div>
       <div class="score-verdict">${r.verdict}</div>
@@ -2183,8 +2228,11 @@ function showResults(r){
 
   document.getElementById('resDate').textContent=new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
 
+  const mascotHTML=t==='hi'?`<img src="assets/mascot/casesolved.png" alt="" class="score-hero-mascot">`:'';
+
   document.getElementById('resBody').innerHTML=`
     <div class="score-hero ${t}">
+      ${mascotHTML}
       <div class="score-tag">Authenticity Score</div>
       <div class="score-num ${t}" id="animNum">0</div>
       <div class="score-track"><div class="score-fill ${t}" id="sFill"></div></div>
@@ -2230,7 +2278,7 @@ function renderHist(){
   const hist=S.history();
   const body=document.getElementById('histBody');
   if(!hist.length){
-    body.innerHTML=`<div class="empty"><span class="empty-icon">📭</span><h3 class="empty-title">No analyses yet</h3><p class="empty-sub">Run your first profile analysis and it'll be saved here for easy review.</p></div>`;
+    body.innerHTML=`<div class="empty"><img src="assets/mascot/walking.png" alt="" class="empty-mascot"><h3 class="empty-title">No analyses yet</h3><p class="empty-sub">Run your first profile analysis and it'll be saved here for easy review.</p></div>`;
     return;
   }
   body.innerHTML=hist.map(e=>{
