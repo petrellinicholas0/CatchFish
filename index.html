@@ -222,6 +222,19 @@ h1,h2,h3,h4{font-weight:900;letter-spacing:-0.03em;line-height:1.1}
 }
 .cb{padding:16px}
 
+/* ─── "DID YOU KNOW?" STAT CARDS ─────────────────────────────── */
+/* Teal, not the page's default coral .card accent — marks this out as an
+   informational/trust element (same association teal already carries via
+   the score-tier and Learn-page conventions elsewhere) rather than another
+   functional/action card competing with the form above it. */
+.stat-card{border-left-color:var(--teal);margin-top:16px}
+.stat-card .card-hd-icon{background:var(--teal-lt)}
+.stat-text{font-size:15px;line-height:1.6;color:var(--ink);margin-bottom:8px}
+.stat-source{
+  font-family:'JetBrains Mono',monospace;font-size:11px;
+  color:var(--muted);letter-spacing:0.02em;
+}
+
 /* ─── USAGE STRIP ─────────────────────────────── */
 .usage-strip{
   background:#fff;
@@ -979,6 +992,8 @@ textarea{min-height:84px;line-height:1.55}
 
     <div id="homeRecent"></div>
 
+    <div class="card stat-card" id="stat-home"></div>
+
   </div>
 </div>
 
@@ -1046,6 +1061,8 @@ textarea{min-height:84px;line-height:1.55}
     <p class="modal-legal" style="margin-top:18px">
       <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> · <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>
     </p>
+
+    <div class="card stat-card" id="stat-profile"></div>
 
   </div>
 </div>
@@ -1229,6 +1246,9 @@ textarea{min-height:84px;line-height:1.55}
       <textarea id="emailHeaders" rows="4" placeholder="Paste raw headers (e.g. from 'Show original' / 'View source') to check SPF/DKIM/DMARC..."></textarea>
       <button class="btn-p" onclick="runEmailAnalysis()">Analyze Email</button>
     </div>
+
+    <div class="card stat-card" id="stat-email"></div>
+
   </div>
   </div>
 <div class="page" id="pg-paper">
@@ -1284,6 +1304,9 @@ textarea{min-height:84px;line-height:1.55}
         </div>
       </div>
     </div>
+
+    <div class="card stat-card" id="stat-paper"></div>
+
   </div>
 </div>
 
@@ -1409,6 +1432,44 @@ document.querySelectorAll('.sb').forEach(sb=>{
 const FREE_LIMIT = 3;
 const RESET_HOURS = 24;
 
+// ════════════════════ "DID YOU KNOW?" STAT CARDS
+// Fills the empty space below the primary content on the four .sb-top pages
+// (Home, Analyze, Email, Paper) with a small, attributed fact card. Update
+// the text/source here — renderStatCards() below populates every
+// #stat-<key> placeholder from this object on load, so nothing else needs
+// to change when a stat is updated.
+const STATS = {
+  home: {
+    text: "An estimated 91.8 million phishing clicks succeed every single day worldwide.",
+    source: "Verizon DBIR / AAG, 2025"
+  },
+  profile: {
+    text: "Romance scam victims lost a median of $2,218 each in Q3 2025 alone.",
+    source: "FTC Consumer Sentinel Network, 2025"
+  },
+  email: {
+    text: "The FBI recorded over 193,000 phishing and spoofing complaints in a single year.",
+    source: "FBI IC3, 2024"
+  },
+  paper: {
+    text: "Over 22 million student papers showed signs of significant AI generation, out of 200M+ reviewed.",
+    source: "Turnitin, 2024"
+  }
+};
+function renderStatCards(){
+  Object.entries(STATS).forEach(([key,stat])=>{
+    const el=document.getElementById(`stat-${key}`);
+    if(!el) return;
+    el.innerHTML=`
+      <div class="card-hd"><span class="card-hd-icon">📊</span><h3>Did You Know?</h3></div>
+      <div class="cb">
+        <p class="stat-text">${stat.text}</p>
+        <p class="stat-source">Source: ${stat.source}</p>
+      </div>
+    `;
+  });
+}
+
 // ════════════════════ STATE HELPERS
 const S = {
   get:(k,fb)=>{try{const v=localStorage.getItem(k);return v===null?fb:JSON.parse(v)}catch{return fb}},
@@ -1469,6 +1530,7 @@ window.addEventListener('load',()=>{
   updateUsageUI();
   renderHist();
   renderHomeRecent();
+  renderStatCards();
   loadSets();
   fitAllSb();
   const checkoutStatus = new URLSearchParams(location.search).get('checkout');
