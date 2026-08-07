@@ -730,6 +730,16 @@ textarea{min-height:84px;line-height:1.55}
 .ob-feat h4{font-size:13px;font-weight:700;margin-bottom:1px}
 .ob-feat p{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted)}
 .ob-note{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-top:10px}
+.ob-age-check{
+  display:flex;align-items:flex-start;gap:10px;
+  text-align:left;max-width:320px;margin:0 auto 16px;
+  font-family:'JetBrains Mono',monospace;font-size:11px;
+  color:var(--muted);line-height:1.5;cursor:pointer;
+}
+.ob-age-check input{
+  margin-top:2px;flex-shrink:0;width:17px;height:17px;
+  accent-color:var(--coral);cursor:pointer;
+}
 
 /* ─── SHARE CARD ─────────────────────────────── */
 /* Hidden canvas-like div for screenshot sharing */
@@ -795,7 +805,11 @@ textarea{min-height:84px;line-height:1.55}
     <div class="ob-feat"><span class="ob-feat-icon">📊</span><div><h4>Trust Score</h4><p>0–100 authenticity score with breakdown</p></div></div>
     <div class="ob-feat"><span class="ob-feat-icon">🔒</span><div><h4>Private Results</h4><p>Your analyses stay on your device — never shared</p></div></div>
   </div>
-  <button class="btn-p" onclick="obDone()" style="max-width:320px">Start for Free 🎣</button>
+  <label class="ob-age-check">
+    <input type="checkbox" id="obAgeConfirm" onchange="obAgeToggle()">
+    <span>I confirm I am 18 years of age or older, and I will only use CatchFish to evaluate profiles of individuals who are 18 or older.</span>
+  </label>
+  <button class="btn-p" id="obStartBtn" onclick="obDone()" style="max-width:320px" disabled>Start for Free 🎣</button>
   <p class="ob-note">3 free analyses included · No signup needed</p>
 </div>
 
@@ -1378,12 +1392,21 @@ function msToReset(){
 }
 
 // ════════════════════ ONBOARDING
+function obAgeToggle(){
+  document.getElementById('obStartBtn').disabled=!document.getElementById('obAgeConfirm').checked;
+}
 function obDone(){
+  if(!document.getElementById('obAgeConfirm').checked) return;
   S.set('cf_ob',true);
+  S.set('cf_age_confirmed',true);
   document.getElementById('ob').classList.add('gone');
 }
 window.addEventListener('load',()=>{
-  if(S.get('cf_ob',false)) document.getElementById('ob').classList.add('gone');
+  // Age attestation is required of every user, so a pre-existing install that
+  // onboarded before this existed (cf_ob true but cf_age_confirmed missing)
+  // sees the onboarding/attestation screen once more rather than being
+  // grandfathered past a safety requirement.
+  if(S.get('cf_ob',false)&&S.get('cf_age_confirmed',false)) document.getElementById('ob').classList.add('gone');
   checkDailyReset();
   updateUsageUI();
   renderHist();
@@ -1571,6 +1594,18 @@ Photos provided: ${imgB64Arr.length}${imgB64Arr.length===1?' (single photo — n
 
   const sys=`You are CatchFish, an expert dating profile authenticity analyzer. Analyze for AI-generated photos, catfishing, romance scams, bots, and misrepresentation.
 
+ABSOLUTE SAFETY RULE — CHECK THIS FIRST, BEFORE ANY OTHER ANALYSIS:
+If any uploaded photo appears to depict a person who may be under the age of 18, OR if the bio/profile details indicate the subject is a minor (e.g. mentions being a high school student, states an age under 18, references being in middle/high school, or other clear indicators of being underage), you MUST NOT perform the requested profile analysis. Do not describe, rate, score, or comment on the photo or bio content in any way.
+
+Instead, respond with ONLY this exact JSON structure and nothing else:
+{
+  "blocked": true,
+  "block_reason": "age_safety",
+  "message": "CatchFish can't analyze this profile. This app is intended only for evaluating profiles of adults (18 and older). If you believe you've encountered content involving a minor being impersonated or exploited, please report it directly to the platform where you found it, and consider reporting to the National Center for Missing & Exploited Children at report.cybertip.org."
+}
+
+When in doubt about apparent age, err on the side of caution and block rather than proceed. This rule overrides every other instruction in this prompt.
+
 CRITICAL RULE: Never state a definitive conclusion. Never say things like "this is fake," "this is a scam," "this is AI-generated," "this is a real person," or "this is authentic" — you cannot know this with certainty from the information given. Every conclusion, in every field below (verdict, summary, checks, detailed_analysis), must be framed as a likelihood (e.g. "high/moderate/low likelihood," or a percentage) paired with the specific indicators that led to that assessment. Never present an assessment without its supporting evidence.
 
 MULTIPLE PHOTOS: If more than one photo is provided, cross-reference them for consistency: whether it's plausibly the same person across all photos, whether apparent age is consistent, whether photo quality/lighting/style is consistent (a mix of professional-looking photos and low-quality selfies can itself be a scam indicator), and — where visible — whether background/location details are consistent with one person's life. Summarize these cross-photo findings, framed as likelihood, in the "Image Authenticity" check, and explicitly note that multiple photos were cross-referenced. If only one photo is provided, explicitly note in the "Image Authenticity" check that cross-photo consistency could not be verified since only a single photo was given — never claim consistency or inconsistency across photos that don't exist. If no photo is provided, mark that check "skip".
@@ -1621,6 +1656,12 @@ Always use probabilistic language in every field — never a bare factual claim.
     }
     const raw=data.content.map(b=>b.text||'').join('');
     const result=JSON.parse(raw.replace(/```json|```/g,'').trim());
+
+    if(result.blocked){
+      hideLoad();
+      showBlockedMessage(result.message);
+      return; // do NOT count this against free usage, do NOT save to history
+    }
 
     // Update usage
     if(!isPro){S.set('cf_usage',used+1);updateUsageUI();}
@@ -2096,6 +2137,19 @@ function renderEmailResult(r,domainInfo){
 }
   
   function tier(s){return s>=65?'hi':s>=35?'md':'lo'}
+
+function showBlockedMessage(message){
+  document.getElementById('resDate').textContent='';
+  document.getElementById('resBody').innerHTML=`
+    <div class="empty">
+      <span class="empty-icon">🛡️</span>
+      <h3 class="empty-title">This Profile Can't Be Analyzed</h3>
+      <p class="empty-sub">${message}</p>
+      <button class="btn-g" onclick="nav('analyze')" style="margin-top:20px;max-width:240px">← Back</button>
+    </div>
+  `;
+  nav('results');
+}
 
 function showResults(r){
   const t=tier(r.score);
