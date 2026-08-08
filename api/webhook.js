@@ -32,7 +32,8 @@ export default async function handler(req, res) {
     const buf = await buffer(req);
     event = stripe.webhooks.constructEvent(buf, sig, webhookSecret);
   } catch (err) {
-    return res.status(400).json({ error: `Webhook signature verification failed: ${err.message}` });
+    console.error('Webhook signature verification failed:', err.message);
+    return res.status(400).json({ error: 'Webhook signature verification failed' });
   }
 
   try {
@@ -71,6 +72,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ received: true });
   } catch (err) {
-    return res.status(500).json({ error: err.message || 'Server error' });
+    console.error('webhook.js error:', err);
+    return res.status(500).json({ error: 'Server error' });
   }
 }

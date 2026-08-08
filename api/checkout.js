@@ -15,8 +15,9 @@ export default async function handler(req, res) {
   try {
     const { plan, userId, email } = req.body || {};
     const priceId = PRICE_IDS[plan];
+    const validEmail = typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-    if (!priceId || !userId || !email) {
+    if (!priceId || !userId || !validEmail) {
       return res.status(400).json({ error: 'Missing or invalid plan, userId, or email' });
     }
 
@@ -40,7 +41,7 @@ export default async function handler(req, res) {
       customer_email: email,
       client_reference_id: userId,
       metadata: { userId, plan },
-      success_url: `${origin}/?checkout=success`,
+      success_url: `${origin}/?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/?checkout=cancel`
     };
 
@@ -52,6 +53,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ url: session.url });
   } catch (err) {
-    return res.status(500).json({ error: err.message || 'Server error' });
+    console.error('checkout.js error:', err);
+    return res.status(500).json({ error: 'Server error. Please try again.' });
   }
 }
