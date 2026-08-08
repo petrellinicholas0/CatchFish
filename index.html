@@ -1534,17 +1534,43 @@ window.addEventListener('load',()=>{
   renderStatCards();
   loadSets();
   fitAllSb();
-  const checkoutStatus = new URLSearchParams(location.search).get('checkout');
+  const checkoutParams = new URLSearchParams(location.search);
+  const checkoutStatus = checkoutParams.get('checkout');
+  const checkoutSessionId = checkoutParams.get('session_id');
+  if(checkoutStatus) history.replaceState({},'',location.pathname);
   if(checkoutStatus==='success'){
-    S.set('cf_pro',true);
-    updateUsageUI();
-    document.getElementById('planLabel').textContent='Pro Plan 🎣';
-    document.getElementById('planSub').textContent='Unlimited analyses';
-    toast('✨ Welcome to CatchFish Pro!');
+    // Never trust the redirect alone — "?checkout=success" is just a URL a
+    // browser can be pointed at directly, with no payment involved. Only
+    // grant Pro once the session_id Stripe put in the redirect is confirmed
+    // server-side against Stripe's own record of the session.
+    (async()=>{
+      let verified=false;
+      if(checkoutSessionId){
+        try{
+          const resp=await fetch('/api/verify-checkout',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({sessionId:checkoutSessionId})
+          });
+          const data=await resp.json();
+          verified=!!data.verified;
+        }catch(e){
+          console.error(e);
+        }
+      }
+      if(verified){
+        S.set('cf_pro',true);
+        updateUsageUI();
+        document.getElementById('planLabel').textContent='Pro Plan 🎣';
+        document.getElementById('planSub').textContent='Unlimited analyses';
+        toast('✨ Welcome to CatchFish Pro!');
+      }else{
+        toast('⚠ Could not confirm your upgrade — contact support if you were charged.');
+      }
+    })();
   }else if(checkoutStatus==='cancel'){
     toast('Checkout cancelled');
   }
-  if(checkoutStatus) history.replaceState({},'',location.pathname);
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('/sw.js').then(reg=>{
       console.log('Service worker registered with scope:', reg.scope);
@@ -2045,16 +2071,16 @@ ${paperText}`;
 
 // ────── PAPER CHECK: shared render helpers (used by both modes) ──────
 function paperListHTML(arr){
-  return (arr||[]).map(f=>`<li class="flag-row"><span class="flag-em">•</span><span class="flag-txt">${f}</span></li>`).join('');
+  return (arr||[]).map(f=>`<li class="flag-row"><span class="flag-em">•</span><span class="flag-txt">${esc(f)}</span></li>`).join('');
 }
 
 function paperAiFindingsHTML(findings){
   if(!findings||!findings.length) return `<div class="analysis-txt" style="color:var(--muted)">No specific indicators found.</div>`;
   return findings.map(f=>`
     <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
-      ${f.excerpt?`<div class="analysis-txt" style="font-style:italic;color:var(--muted);margin-bottom:4px">"${f.excerpt}"</div>`:''}
-      <div class="analysis-txt">${f.pattern||''}</div>
-      ${f.tip?`<div class="analysis-txt" style="color:var(--teal);margin-top:4px"><strong>Tip:</strong> ${f.tip}</div>`:''}
+      ${f.excerpt?`<div class="analysis-txt" style="font-style:italic;color:var(--muted);margin-bottom:4px">"${esc(f.excerpt)}"</div>`:''}
+      <div class="analysis-txt">${esc(f.pattern)}</div>
+      ${f.tip?`<div class="analysis-txt" style="color:var(--teal);margin-top:4px"><strong>Tip:</strong> ${esc(f.tip)}</div>`:''}
     </div>`).join('');
 }
 
@@ -2066,10 +2092,10 @@ function paperFactCheckHTML(fc,introText){
     <div class="check-row">
       <span class="check-icon">${icons[c.assessment]||'❔'}</span>
       <div class="check-info">
-        <div class="check-name">${c.claim||''}</div>
-        <div class="check-detail">${c.note||''}</div>
+        <div class="check-name">${esc(c.claim)}</div>
+        <div class="check-detail">${esc(c.note)}</div>
       </div>
-      <span class="check-pill ${pillClass[c.assessment]||'skip'}">${(c.assessment||'unverified').toUpperCase()}</span>
+      <span class="check-pill ${esc(pillClass[c.assessment]||'skip')}">${esc((c.assessment||'unverified').toUpperCase())}</span>
     </div>`).join('')}</div>`
     :`<div class="analysis-txt" style="color:var(--muted)">No independently checkable factual claims were identified.</div>`;
   return `
@@ -2086,16 +2112,16 @@ function paperCitationCheckHTML(cc){
   const issues=(cc&&cc.issues)||[];
   const issuesHTML=issues.length?issues.map(i=>`
     <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
-      ${i.excerpt?`<div class="analysis-txt" style="font-style:italic;color:var(--muted);margin-bottom:4px">"${i.excerpt}"</div>`:''}
-      <div class="analysis-txt">${i.problem||''}</div>
-      ${i.corrected_example?`<div class="analysis-txt" style="color:var(--teal);margin-top:4px"><strong>Example:</strong> ${i.corrected_example}</div>`:''}
+      ${i.excerpt?`<div class="analysis-txt" style="font-style:italic;color:var(--muted);margin-bottom:4px">"${esc(i.excerpt)}"</div>`:''}
+      <div class="analysis-txt">${esc(i.problem)}</div>
+      ${i.corrected_example?`<div class="analysis-txt" style="color:var(--teal);margin-top:4px"><strong>Example:</strong> ${esc(i.corrected_example)}</div>`:''}
     </div>`).join('')
     :`<div class="analysis-txt" style="color:var(--muted)">No formatting issues found.</div>`;
   return `
     <div class="card">
-      <div class="card-hd"><span class="card-hd-icon">📖</span><h3>Citation Check</h3><span class="card-hd-tag">${(cc&&cc.detected_style)||'Unclear'}</span></div>
+      <div class="card-hd"><span class="card-hd-icon">📖</span><h3>Citation Check</h3><span class="card-hd-tag">${esc((cc&&cc.detected_style)||'Unclear')}</span></div>
       <div class="cb">
-        <div class="analysis-txt" style="color:var(--muted);margin-bottom:8px">Style confidence: ${(cc&&cc.style_confidence)||'unclear'}. Checks formatting & internal consistency only — not source legitimacy.</div>
+        <div class="analysis-txt" style="color:var(--muted);margin-bottom:8px">Style confidence: ${esc((cc&&cc.style_confidence)||'unclear')}. Checks formatting & internal consistency only — not source legitimacy.</div>
         ${issuesHTML}
       </div>
     </div>`;
@@ -2115,14 +2141,14 @@ function renderPaperResultInstructor(r){
     <div class="score-hero ${t}">
       <div class="score-tag">Overall Confidence Score</div>
       <div class="score-num ${t}">${avgScore}</div>
-      <div class="score-summary">${r.overall_verdict||''}</div>
+      <div class="score-summary">${esc(r.overall_verdict)}</div>
     </div>
     <p class="modal-legal">This is a probability estimate based on automated indicators, not a fact. Always use your own judgment.</p>
 
     <div class="card">
       <div class="card-hd"><span class="card-hd-icon">📝</span><h3>Assignment Fit</h3><span class="card-hd-tag">${af.score ?? '—'}/100</span></div>
       <div class="cb">
-        <div class="analysis-txt">${af.summary||''}</div>
+        <div class="analysis-txt">${esc(af.summary)}</div>
         ${af.unaddressed_parts&&af.unaddressed_parts.length?`<ul class="flag-list" style="margin-top:8px">${paperListHTML(af.unaddressed_parts)}</ul>`:''}
       </div>
     </div>
@@ -2130,7 +2156,7 @@ function renderPaperResultInstructor(r){
     <div class="card">
       <div class="card-hd"><span class="card-hd-icon">📚</span><h3>Textbook Alignment</h3><span class="card-hd-tag">${ta.textbook_recognized?'Recognized':'Not recognized'}</span></div>
       <div class="cb">
-        <div class="analysis-txt" style="color:var(--muted);margin-bottom:8px">${ta.confidence_note||''}</div>
+        <div class="analysis-txt" style="color:var(--muted);margin-bottom:8px">${esc(ta.confidence_note)}</div>
         <ul class="flag-list">${paperListHTML(ta.findings)}</ul>
       </div>
     </div>
@@ -2166,7 +2192,7 @@ function renderPaperResultWriter(r){
     <div class="score-hero ${t}">
       <div class="score-tag">Self-Check Score</div>
       <div class="score-num ${t}">${avgScore}</div>
-      <div class="score-summary">${r.overall_verdict||''}</div>
+      <div class="score-summary">${esc(r.overall_verdict)}</div>
     </div>
     <p class="modal-legal">This is a probability estimate based on automated indicators, not a fact. Always use your own judgment.</p>
 
@@ -2189,7 +2215,7 @@ function renderPaperResultWriter(r){
     <div class="card">
       <div class="card-hd"><span class="card-hd-icon">📝</span><h3>Assignment Fit</h3><span class="card-hd-tag">${af.score ?? '—'}/100</span></div>
       <div class="cb">
-        <div class="analysis-txt">${af.summary||''}</div>
+        <div class="analysis-txt">${esc(af.summary)}</div>
         ${af.unaddressed_parts&&af.unaddressed_parts.length?`<ul class="flag-list" style="margin-top:8px">${paperListHTML(af.unaddressed_parts)}</ul>`:''}
       </div>
     </div>
@@ -2197,7 +2223,7 @@ function renderPaperResultWriter(r){
     <div class="card">
       <div class="card-hd"><span class="card-hd-icon">📚</span><h3>Textbook Alignment</h3><span class="card-hd-tag">${ta.textbook_recognized?'Recognized':'Not recognized'}</span></div>
       <div class="cb">
-        <div class="analysis-txt" style="color:var(--muted);margin-bottom:8px">${ta.confidence_note||''}</div>
+        <div class="analysis-txt" style="color:var(--muted);margin-bottom:8px">${esc(ta.confidence_note)}</div>
         <ul class="flag-list">${paperListHTML(ta.findings)}</ul>
       </div>
     </div>
@@ -2213,16 +2239,16 @@ function renderPaperResultWriter(r){
 }
 function renderEmailResult(r,domainInfo){
   const t=tier(r.score);
-  const redHTML=(r.red_flags||[]).length?`<div class="card"><div class="card-hd">🚩 Red Flags</div><div class="cb"><ul class="flag-list">${(r.red_flags||[]).map(f=>`<li>${f}</li>`).join('')}</ul></div></div>`:'';
-  const greenHTML=(r.green_flags||[]).length?`<div class="card"><div class="card-hd">✅ Green Flags</div><div class="cb"><ul class="flag-list">${(r.green_flags||[]).map(f=>`<li>${f}</li>`).join('')}</ul></div></div>`:'';
+  const redHTML=(r.red_flags||[]).length?`<div class="card"><div class="card-hd">🚩 Red Flags</div><div class="cb"><ul class="flag-list">${(r.red_flags||[]).map(f=>`<li>${esc(f)}</li>`).join('')}</ul></div></div>`:'';
+  const greenHTML=(r.green_flags||[]).length?`<div class="card"><div class="card-hd">✅ Green Flags</div><div class="cb"><ul class="flag-list">${(r.green_flags||[]).map(f=>`<li>${esc(f)}</li>`).join('')}</ul></div></div>`:'';
 
   let domainLineHTML='';
   if(domainInfo&&domainInfo.domain){
     if(domainInfo.available&&domainInfo.registrationDate){
       const d=new Date(domainInfo.registrationDate).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'});
-      domainLineHTML=`<p class="modal-legal">Sender domain (${domainInfo.domain}) registered ${d}</p>`;
+      domainLineHTML=`<p class="modal-legal">Sender domain (${esc(domainInfo.domain)}) registered ${esc(d)}</p>`;
     }else{
-      domainLineHTML=`<p class="modal-legal">Sender domain (${domainInfo.domain}) registration date could not be verified</p>`;
+      domainLineHTML=`<p class="modal-legal">Sender domain (${esc(domainInfo.domain)}) registration date could not be verified</p>`;
     }
   }
 
@@ -2231,13 +2257,13 @@ function renderEmailResult(r,domainInfo){
   if(sv&&sv.claim_type==='business'){
     const lines=[];
     if(sv.domain_match&&sv.domain_match.checked&&sv.domain_match.mismatch_likelihood&&sv.domain_match.mismatch_likelihood!=='none'){
-      lines.push(`Business claim ("${sv.domain_match.claimed_business}") could not be verified against sending domain ("${sv.domain_match.sending_domain}") — ${sv.domain_match.mismatch_likelihood} likelihood of mismatch`);
+      lines.push(`Business claim ("${esc(sv.domain_match.claimed_business)}") could not be verified against sending domain ("${esc(sv.domain_match.sending_domain)}") — ${esc(sv.domain_match.mismatch_likelihood)} likelihood of mismatch`);
     }
     if(sv.free_mail_as_business){
       lines.push(`Sender signs as a business representative but uses a free consumer email provider`);
     }
     if(sv.auth_alignment){
-      lines.push(sv.auth_alignment.checked&&sv.auth_alignment.result?`Authentication (SPF/DKIM/DMARC): ${sv.auth_alignment.result}`:`Authentication (SPF/DKIM/DMARC) could not be checked — no email headers were provided`);
+      lines.push(sv.auth_alignment.checked&&sv.auth_alignment.result?`Authentication (SPF/DKIM/DMARC): ${esc(sv.auth_alignment.result)}`:`Authentication (SPF/DKIM/DMARC) could not be checked — no email headers were provided`);
     }
     verificationHTML=lines.map(l=>`<p class="modal-legal">${l}</p>`).join('');
   }
@@ -2248,9 +2274,9 @@ function renderEmailResult(r,domainInfo){
     <div class="score-hero ${t}">
       ${mascotHTML}
       <div class="score-tag">Safety Score</div>
-      <div class="score-num">${r.score}</div>
-      <div class="score-verdict">${r.verdict}</div>
-      <div class="score-summary">${r.summary}</div>
+      <div class="score-num">${esc(r.score)}</div>
+      <div class="score-verdict">${esc(r.verdict)}</div>
+      <div class="score-summary">${esc(r.summary)}</div>
     </div>
     <p class="modal-legal">This is a probability estimate based on automated indicators, not a fact. Always use your own judgment.</p>
     ${domainLineHTML}
@@ -2262,13 +2288,25 @@ function renderEmailResult(r,domainInfo){
   
   function tier(s){return s>=65?'hi':s>=35?'md':'lo'}
 
+  // Every render function below inserts AI-response fields (and, for History's
+  // platform/verdict, direct user-form input) into innerHTML. None of that is
+  // safe to trust as pre-sanitized HTML — a submitted bio/email/paper
+  // containing HTML or script tags can come back quoted verbatim in an AI
+  // "excerpt" field, and the Platform field on the Profile Analyzer form goes
+  // straight into History with no round-trip at all. esc() HTML-escapes any
+  // dynamic string before it's interpolated into a template literal that
+  // becomes innerHTML.
+  function esc(s){
+    return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
 function showBlockedMessage(message){
   document.getElementById('resDate').textContent='';
   document.getElementById('resBody').innerHTML=`
     <div class="empty">
       <span class="empty-icon">🛡️</span>
       <h3 class="empty-title">This Profile Can't Be Analyzed</h3>
-      <p class="empty-sub">${message}</p>
+      <p class="empty-sub">${esc(message)}</p>
       <button class="btn-g" onclick="nav('analyze')" style="margin-top:20px;max-width:240px">← Back</button>
     </div>
   `;
@@ -2283,17 +2321,17 @@ function showResults(r){
     <div class="check-row">
       <span class="check-icon">${icons[c.status]||'➖'}</span>
       <div class="check-info">
-        <div class="check-name">${c.name}</div>
-        <div class="check-detail">${c.detail}</div>
+        <div class="check-name">${esc(c.name)}</div>
+        <div class="check-detail">${esc(c.detail)}</div>
       </div>
-      <span class="check-pill ${c.status}">${c.status.toUpperCase()}</span>
+      <span class="check-pill ${esc(c.status)}">${esc((c.status||'').toUpperCase())}</span>
     </div>`).join('');
 
   const redHTML=(r.red_flags||[]).length?`
     <div class="card">
       <div class="card-hd"><span class="card-hd-icon">🚩</span><h3>Red Flags</h3></div>
       <div class="cb"><ul class="flag-list">
-        ${(r.red_flags||[]).map(f=>`<li class="flag-row"><span class="flag-em">🚩</span><span class="flag-txt">${f}</span></li>`).join('')}
+        ${(r.red_flags||[]).map(f=>`<li class="flag-row"><span class="flag-em">🚩</span><span class="flag-txt">${esc(f)}</span></li>`).join('')}
       </ul></div>
     </div>`:''  ;
 
@@ -2301,7 +2339,7 @@ function showResults(r){
     <div class="card">
       <div class="card-hd"><span class="card-hd-icon">✅</span><h3>Positive Signals</h3></div>
       <div class="cb"><ul class="flag-list">
-        ${(r.green_flags||[]).map(f=>`<li class="flag-row"><span class="flag-em">✅</span><span class="flag-txt">${f}</span></li>`).join('')}
+        ${(r.green_flags||[]).map(f=>`<li class="flag-row"><span class="flag-em">✅</span><span class="flag-txt">${esc(f)}</span></li>`).join('')}
       </ul></div>
     </div>`:''  ;
 
@@ -2315,8 +2353,8 @@ function showResults(r){
       <div class="score-tag">Authenticity Score</div>
       <div class="score-num ${t}" id="animNum">0</div>
       <div class="score-track"><div class="score-fill ${t}" id="sFill"></div></div>
-      <div class="score-verdict">${r.verdict}</div>
-      <div class="score-summary">${r.summary}</div>
+      <div class="score-verdict">${esc(r.verdict)}</div>
+      <div class="score-summary">${esc(r.summary)}</div>
     </div>
     <p class="modal-legal">This is a probability estimate based on automated indicators, not a fact. Always use your own judgment.</p>
 
@@ -2330,7 +2368,7 @@ function showResults(r){
 
     <div class="card">
       <div class="card-hd"><span class="card-hd-icon">📋</span><h3>Full Analysis</h3></div>
-      <div class="cb"><div class="analysis-txt">${r.detailed_analysis||''}</div></div>
+      <div class="cb"><div class="analysis-txt">${esc(r.detailed_analysis)}</div></div>
     </div>
 
     <div class="disc">
@@ -2364,10 +2402,10 @@ function renderHist(){
     const t=tier(e.score);
     const d=new Date(e.date).toLocaleDateString('en-US',{month:'short',day:'numeric'});
     return`<div class="hist-item" onclick="loadHist(${e.id})">
-      <div class="hist-score ${t}">${e.score}</div>
+      <div class="hist-score ${t}">${esc(e.score)}</div>
       <div class="hist-info">
-        <div class="hist-verdict">${e.verdict}</div>
-        <div class="hist-meta">${e.platform} · ${d}</div>
+        <div class="hist-verdict">${esc(e.verdict)}</div>
+        <div class="hist-meta">${esc(e.platform)} · ${esc(d)}</div>
       </div>
       <span class="hist-arr">›</span>
     </div>`;
@@ -2394,10 +2432,10 @@ function renderHomeRecent(){
       const t=tier(e.score);
       const d=new Date(e.date).toLocaleDateString('en-US',{month:'short',day:'numeric'});
       return`<div class="hist-item" onclick="loadHist(${e.id})">
-        <div class="hist-score ${t}">${e.score}</div>
+        <div class="hist-score ${t}">${esc(e.score)}</div>
         <div class="hist-info">
-          <div class="hist-verdict">${e.verdict}</div>
-          <div class="hist-meta">${e.platform} · ${d}</div>
+          <div class="hist-verdict">${esc(e.verdict)}</div>
+          <div class="hist-meta">${esc(e.platform)} · ${esc(d)}</div>
         </div>
         <span class="hist-arr">›</span>
       </div>`;
