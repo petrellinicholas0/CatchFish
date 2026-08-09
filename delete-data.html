@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#ff6b47">
+<meta name="description" content="How to delete your data from CatchFish.">
+<title>Delete Your Data — CatchFish</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,700;0,9..144,900;1,9..144,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0e0c0a; --paper:#f5f0e8; --paper2:#ede7d9;
+  --coral:#ff6b47; --teal:#00b8a0; --muted:#7a7060; --border:rgba(14,12,10,0.12);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{font-size:16px}
+body{
+  font-family:'Fraunces',Georgia,serif;
+  background:var(--paper); color:var(--ink);
+  line-height:1.65;
+}
+.wrap{max-width:680px;margin:0 auto;padding:32px 20px 80px}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px}
+.logo{font-weight:900;font-size:20px;text-decoration:none;color:var(--ink)}
+.logo span{color:var(--coral)}
+.back{
+  font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted);text-decoration:none;
+}
+.back:hover{color:var(--coral)}
+h1{font-size:28px;font-weight:900;margin-bottom:6px}
+.updated{
+  font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);
+  margin-bottom:28px;letter-spacing:.04em;
+}
+h2{font-size:18px;font-weight:700;margin:28px 0 8px}
+p,li{font-size:15px;color:var(--ink);margin-bottom:10px}
+ul,ol{padding-left:20px;margin-bottom:10px}
+a{color:var(--coral)}
+.card{
+  background:var(--paper2);border:1px solid var(--border);
+  border-radius:12px;padding:16px 18px;margin:24px 0;font-size:14px;color:var(--muted);
+}
+footer{
+  margin-top:40px;padding-top:20px;border-top:1px solid var(--border);
+  font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);
+  display:flex;gap:16px;flex-wrap:wrap;
+}
+footer a{color:var(--muted);text-decoration:underline}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="logo" href="/">🎣 Catch<span>Fish</span></a>
+    <a class="back" href="/">← Back to app</a>
+  </header>
+
+  <h1>How to Delete Your Data</h1>
+  <p class="updated">Last updated: August 9, 2026</p>
+
+  <p>CatchFish (operated by CatchFish LLC) lets you request deletion of your account data at any time.</p>
+
+  <h2>Steps to Delete Your Data</h2>
+  <ol>
+    <li>Email <a href="mailto:support@catchfishapp.com">support@catchfishapp.com</a> from the email address associated with your account.</li>
+    <li>Include the subject line "Data Deletion Request."</li>
+    <li>We will delete your account record within 30 days and confirm by email.</li>
+  </ol>
+
+  <h2>What Gets Deleted</h2>
+  <p>The following, stored in the CatchFish database, is deleted as part of your request:</p>
+  <ul>
+    <li>Your email address;</li>
+    <li>Your plan/subscription status;</li>
+    <li>Your Stripe customer ID reference.</li>
+  </ul>
+
+  <h2>What Is Not Stored</h2>
+  <p>Uploaded photos and analysis text are never stored server-side and are already not retained — see <a href="/privacy">Privacy Policy</a> for full detail.</p>
+  <p>Stripe retains its own billing records per its own policies, which CatchFish does not control.</p>
+
+  <footer>
+    <a href="/">Home</a>
+    <a href="/privacy">Privacy Policy</a>
+    <a href="/terms">Terms of Service</a>
+    <a href="/delete-data">Delete Data</a>
+  </footer>
+</div>
+</body>
+</html>
