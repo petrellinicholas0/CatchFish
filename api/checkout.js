@@ -42,7 +42,8 @@ export default async function handler(req, res) {
       client_reference_id: userId,
       metadata: { userId, plan },
       success_url: `${origin}/?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/?checkout=cancel`
+      cancel_url: `${origin}/?checkout=cancel`,
+      allow_promotion_codes: true
     };
 
     if (mode === 'subscription') {
