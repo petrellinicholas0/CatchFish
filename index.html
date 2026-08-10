@@ -1209,11 +1209,6 @@ textarea{min-height:84px;line-height:1.55}
       <span class="set-arr">›</span>
     </div>
 
-    <div class="set-row" onclick="resetUsage()">
-      <div><div class="set-label">Reset Free Usage Counter</div><div class="set-sub">For testing</div></div>
-      <span class="set-arr">›</span>
-    </div>
-
     <div class="set-section">About</div>
 
     <div class="set-row"><div><div class="set-label">Version</div><div class="set-sub">CatchFish PWA v1.0.0</div></div></div>
@@ -2461,8 +2456,6 @@ function clearHist(){
   if(!confirm('Clear all history? This cannot be undone.'))return;
   S.set('cf_hist',[]);renderHist();toast('History cleared');
 }
-function resetUsage(){S.set('cf_usage',0);S.set('cf_reset',Date.now());updateUsageUI();toast('Usage counter reset');}
-
 // ════════════════════ PAYWALL
 let selPlanId='monthly';
 function openPW(){document.getElementById('pwModal').classList.add('on')}
