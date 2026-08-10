@@ -1782,7 +1782,8 @@ Always use probabilistic language in every field — never a bare factual claim.
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         system:sys,
-        messages:[{role:'user',content}]
+        messages:[{role:'user',content}],
+        userId:getUid()
       })
     });
 
@@ -1790,6 +1791,11 @@ Always use probabilistic language in every field — never a bare factual claim.
     rows.forEach(r=>r.classList.add('done'));
 
     const data=await resp.json();
+    if(resp.status===402 && data.limitReached){
+      hideLoad();
+      openPW();
+      return;
+    }
     if(!resp.ok || data.error){
       throw new Error(data.error || data.error?.message || ('API error: '+resp.status));
     }
@@ -1913,9 +1919,13 @@ ${emailText}`;
     const resp=await fetch('/api/analyze',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({system:sys,messages:[{role:'user',content}]})
+      body:JSON.stringify({system:sys,messages:[{role:'user',content}],userId:getUid()})
     });
     const data=await resp.json();
+    if(resp.status===402 && data.limitReached){
+      openPW();
+      return;
+    }
     if(!resp.ok||data.error){throw new Error(data.error||('API error: '+resp.status));}
     const raw=data.content.map(b=>b.text||'').join('');
     const result=JSON.parse(raw.replace(/```json|```/g,'').trim());
@@ -2045,9 +2055,13 @@ ${paperText}`;
     const resp=await fetch('/api/analyze',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({system:sys,messages:[{role:'user',content}]})
+      body:JSON.stringify({system:sys,messages:[{role:'user',content}],userId:getUid()})
     });
     const data=await resp.json();
+    if(resp.status===402 && data.limitReached){
+      openPW();
+      return;
+    }
     if(!resp.ok||data.error){throw new Error(data.error||('API error: '+resp.status));}
     const raw=data.content.map(b=>b.text||'').join('');
     const result=JSON.parse(raw.replace(/```json|```/g,'').trim());
