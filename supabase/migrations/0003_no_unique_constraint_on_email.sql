@@ -1,0 +1,29 @@
+-- No schema change in this migration — this documents a deliberate decision
+-- made while fixing a critical account-takeover bug in api/checkout.js.
+--
+-- Before this fix, api/checkout.js upserted into `users` with
+-- `onConflict: 'email'` while writing a client-supplied `id`. That requires
+-- a unique constraint on `email` to work at all in Postgres — but no such
+-- constraint exists anywhere in these migration files (0001 only declares
+-- `id` as the primary key). Either production had one added out-of-band
+-- (schema drift never captured here), or checkout was failing on every
+-- upsert attempt.
+--
+-- The fix changes the conflict target to `onConflict: 'id'` (see the
+-- api/checkout.js commit this migration ships alongside), which relies on
+-- the primary key constraint `0001_create_users_table.sql` already
+-- declares on `id` — no new constraint is needed for the upsert itself to
+-- work correctly.
+--
+-- Just as importantly: a unique constraint on `email` must NOT be added
+-- going forward. With the fix, the same email used from a different
+-- client-generated device id is expected to create a SEPARATE row rather
+-- than merging into an existing one — that's the safe, correct behavior
+-- given there's no real login system tying a device id to a verified
+-- email. Adding `unique(email)` would reintroduce a merge-by-email path
+-- (via a failed-insert-then-must-resolve-somehow scenario) and risks
+-- recreating the same class of bug this migration accompanies the fix
+-- for. Duplicate emails across separate rows are an accepted, intentional
+-- limitation of the current device-id-based model, not a data integrity
+-- problem — the durable fix for "one email, one account" is real
+-- authentication, not a database constraint.

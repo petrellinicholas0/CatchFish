@@ -22,9 +22,18 @@ export default async function handler(req, res) {
     }
 
     const supabase = getSupabaseAdmin();
+    // Conflict target must be `id`, never `email`. Upserting on email
+    // while writing a client-supplied `id` let anyone who knew an existing
+    // user's email address hijack that user's row — the conflict-by-email
+    // resolution would silently rewrite the row's primary key to whatever
+    // id the caller sent, inheriting that row's plan_status (including an
+    // already-active paid subscription) for free and orphaning the real
+    // owner's entitlement. Keying on `id` means the same email used from a
+    // different device creates a separate row instead of merging into an
+    // existing one — the correct, safe behavior until real accounts exist.
     const { error: upsertError } = await supabase
       .from('users')
-      .upsert({ id: userId, email }, { onConflict: 'email' });
+      .upsert({ id: userId, email }, { onConflict: 'id' });
 
     if (upsertError) {
       console.error('Supabase upsert into users failed:', upsertError.message);
