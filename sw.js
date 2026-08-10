@@ -1,4 +1,4 @@
-const CACHE_NAME = 'catchfish-v3';
+const CACHE_NAME = 'catchfish-v4';
 const urlsToCache = ['/', '/index.html', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
