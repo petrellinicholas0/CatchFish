@@ -33,7 +33,13 @@ export default async function handler(req, res) {
 
     const stripe = getStripe();
     const mode = plan === 'single' ? 'payment' : 'subscription';
-    const origin = req.headers.origin || `https://${req.headers.host}`;
+    // Never derive this from the request (Origin/Host headers are
+    // attacker-controlled on a direct API call, not just browser-sent) —
+    // Stripe will redirect here after a real payment, so an attacker-chosen
+    // value would hand them the completed checkout session straight from
+    // Stripe's own redirect. Only trust values set in the deployment
+    // environment itself.
+    const origin = process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://catch-fish-two.vercel.app');
 
     const sessionParams = {
       mode,
