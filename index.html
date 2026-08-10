@@ -1472,7 +1472,14 @@ const S = {
   set:(k,v)=>localStorage.setItem(k,JSON.stringify(v)),
   usage:()=>S.get('cf_usage',0),
   isPro:()=>S.get('cf_pro',false),
-  lastReset:()=>S.get('cf_reset', Date.now()),
+  lastReset:()=>{
+    let val = S.get('cf_reset', null);
+    if(val === null){
+      val = Date.now();
+      S.set('cf_reset', val);
+    }
+    return val;
+  },
   history:()=>S.get('cf_hist',[]),
   settings:()=>S.get('cf_sets',{saveHist:true,autoClear:false})
 };
