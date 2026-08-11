@@ -6,6 +6,14 @@ const FREE_LIMIT = 3;
 const RESET_HOURS = 24;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Soft cap on Pro (plan_status='active') daily usage. Pro requests are
+// NEVER blocked by this — check_and_increment_usage always returns
+// o_allowed=true for an active plan regardless of count — it only logs an
+// overage row (see supabase/migrations/0007_add_pro_soft_cap_and_concurrency.sql)
+// once a day's count exceeds this, purely for visibility into abnormal
+// usage.
+const PRO_DAILY_SOFT_CAP = 150;
+
 // Generous sanity cap — well beyond any legitimate bio/email/paper
 // submission (a very long paper is tens of thousands of characters), but
 // bounds otherwise-unbounded input from driving up per-request cost.
@@ -385,7 +393,8 @@ export default async function handler(req, res) {
     const { data, error } = await supabase.rpc('check_and_increment_usage', {
       p_user_id: userId,
       p_free_limit: FREE_LIMIT,
-      p_reset_hours: RESET_HOURS
+      p_reset_hours: RESET_HOURS,
+      p_pro_daily_limit: PRO_DAILY_SOFT_CAP
     });
 
     if (error) {
@@ -399,6 +408,32 @@ export default async function handler(req, res) {
     }
   } catch (err) {
     console.error('usage check error:', err);
+    return res.status(500).json({ error: 'Server error. Please try again.' });
+  }
+
+  // ════════════════════ CONCURRENCY CAP ════════════════════
+  // Independent of the daily-limit/soft-cap check above — applies to
+  // every plan, including Pro (which has no cap on the check above).
+  // Caps how many requests from the same userId can be in flight to the
+  // Anthropic API at once, atomically via acquire_request_slot /
+  // release_request_slot (see migration 0007). release_request_slot is
+  // only ever called from the finally block below, and only reached once
+  // a slot has actually been acquired — a stuck/leaked slot would
+  // permanently lock a user out, so it must run on every exit path from
+  // the Anthropic call: success, a thrown error, and a timeout alike.
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data: slotGranted, error: slotError } = await supabase.rpc('acquire_request_slot', { p_user_id: userId });
+
+    if (slotError) {
+      console.error('acquire_request_slot failed:', slotError.message);
+      return res.status(500).json({ error: 'Server error. Please try again.' });
+    }
+    if (!slotGranted) {
+      return res.status(429).json({ error: 'Too many concurrent requests from this device. Please wait for one to finish and try again.' });
+    }
+  } catch (err) {
+    console.error('acquire_request_slot error:', err);
     return res.status(500).json({ error: 'Server error. Please try again.' });
   }
 
@@ -436,6 +471,20 @@ export default async function handler(req, res) {
     return res.status(err.name === 'AbortError' ? 504 : 500).json({ error: message });
   } finally {
     clearTimeout(timeout);
+    // Swallow any release failure internally rather than letting it
+    // propagate — a finally block that throws would override whatever
+    // return value the try/catch above already produced, turning a
+    // successful (or already-handled-error) response into an unrelated
+    // crash.
+    try {
+      const supabase = getSupabaseAdmin();
+      const { error: releaseError } = await supabase.rpc('release_request_slot', { p_user_id: userId });
+      if (releaseError) {
+        console.error('release_request_slot failed:', releaseError.message);
+      }
+    } catch (releaseErr) {
+      console.error('release_request_slot error:', releaseErr);
+    }
   }
 }
 
