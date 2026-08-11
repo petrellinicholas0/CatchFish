@@ -1488,6 +1488,54 @@ function isInstalledApp(){
   return document.referrer.includes('android-app://') || window.matchMedia('(display-mode: standalone)').matches;
 }
 
+async function tryPlayBilling(planId){
+  const productIdMap = {
+    monthly: 'catchfish_monthly',
+    annual: 'catchfish_annual',
+    single: 'catchfish_single'
+  };
+  const productId = productIdMap[planId];
+  if(!('getDigitalGoodsService' in window)){
+    toast('⚠️ Google Play Billing isn\'t available. Please try updating the app.');
+    return false;
+  }
+  try{
+    const service = await window.getDigitalGoodsService('https://play.google.com/billing');
+    const details = await service.getDetails([productId]);
+    if(!details.length){
+      toast('⚠️ This plan isn\'t available yet. Please try again shortly.');
+      return false;
+    }
+    const request = new PaymentRequest(
+      [{supportedMethods:'https://play.google.com/billing', data:{sku: productId}}],
+      {total:{label:'Total', amount:{currency: details[0].price.currency, value: details[0].price.value}}}
+    );
+    const paymentResponse = await request.show();
+    const purchaseToken = paymentResponse.details.purchaseToken || paymentResponse.details.token;
+    await paymentResponse.complete('success');
+
+    const verifyResp = await fetch('/api/play-verify', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({userId: getUid(), productId, purchaseToken, planType: planId==='single' ? 'onetime' : 'subscription'})
+    });
+    const verifyData = await verifyResp.json();
+    if(!verifyResp.ok || !verifyData.success){
+      toast('⚠️ Purchase verification failed. Contact support@catchfishapp.com if charged.');
+      return false;
+    }
+    S.set('cf_pro', true);
+    updateUsageUI();
+    toast('✨ Welcome to CatchFish Pro!');
+    return true;
+  }catch(err){
+    if(err.name !== 'AbortError'){
+      toast('⚠️ Purchase couldn\'t be completed: ' + (err.message || 'Unknown error'));
+    }
+    return false;
+  }
+}
+
 // ════════════════════ ANONYMOUS USER ID
 function getUid(){
   let uid = S.get('cf_uid', null);
@@ -2340,7 +2388,8 @@ function selPlan(el,id){
 }
 async function doUpgrade(){
   if(isInstalledApp()){
-    toast('⚠️ In-app purchases are temporarily unavailable while we update to Google Play Billing. Please visit catch-fish-two.vercel.app in your browser to upgrade.');
+    const ok=await tryPlayBilling(selPlanId);
+    if(ok) closePW();
     return;
   }
 
