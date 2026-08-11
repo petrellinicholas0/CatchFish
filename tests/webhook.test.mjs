@@ -1,16 +1,27 @@
 // Run with: node --experimental-test-module-mocks --test tests/*.test.mjs
 // (also wired up as `npm test`)
 //
-// Covers the fix for a revenue leak in api/webhook.js: checkout.session.
-// completed used to set plan_status: 'active' for ANY completed session,
-// including the $0.99 'single' plan (Stripe mode: 'payment', one-time,
-// so there's no subscription object and customer.subscription.deleted
-// never fires to revoke it later) — turning a $0.99 purchase into a
-// permanent, unlimited Pro subscription. The fix branches on
-// session.metadata.plan: monthly/annual keep the existing behavior,
-// single grants exactly one credit via the atomic
-// grant_single_purchase_credit RPC and never touches plan_status, and an
-// unrecognized/missing plan does nothing destructive.
+// Covers two fixes in api/webhook.js:
+//
+// 1. A revenue leak: checkout.session.completed used to set plan_status:
+//    'active' for ANY completed session, including the $0.99 'single'
+//    plan (Stripe mode: 'payment', one-time, so there's no subscription
+//    object and customer.subscription.deleted never fires to revoke it
+//    later) — turning a $0.99 purchase into a permanent, unlimited Pro
+//    subscription. The fix branches on session.metadata.plan: monthly/
+//    annual keep the existing behavior, single grants exactly one credit
+//    via the atomic grant_single_purchase_credit RPC and never touches
+//    plan_status, and an unrecognized/missing plan does nothing
+//    destructive.
+//
+// 2. A billing-lag gap: customer.subscription.updated wasn't handled at
+//    all, so a subscriber with a failing card kept full active access
+//    until Stripe's dunning process exhausted retries and eventually
+//    fired customer.subscription.deleted, which can take a substantial
+//    amount of time. The fix downgrades plan_status to 'free' on
+//    'past_due'/'unpaid'/'canceled', using the same stripe_customer_id
+//    lookup as the existing subscription.deleted handler, while leaving
+//    'active'/'trialing' untouched.
 //
 // Every mock is registered via the per-test `t.mock` tracker so it's
 // always restored, pass or fail. req/res are minimal stand-ins; the
@@ -246,6 +257,100 @@ test('customer.subscription.deleted still sets plan_status back to free (unchang
   assert.equal(updateCalls[0].data.plan_status, 'free');
   assert.equal(updateCalls[0].col, 'stripe_customer_id');
   assert.equal(updateCalls[0].val, 'cus_test123');
+});
+
+// ════════════════════ customer.subscription.updated ═══════════════════
+// Covers the fix for a second gap: a subscriber with a failing card kept
+// full active access until Stripe's dunning process exhausted retries and
+// eventually fired customer.subscription.deleted — which per Stripe's
+// default retry schedule can take a substantial amount of time. This adds
+// handling for customer.subscription.updated so a 'past_due'/'unpaid'/
+// 'canceled' status downgrades plan_status immediately, using the same
+// stripe_customer_id lookup pattern as the existing subscription.deleted
+// handler, while 'active'/'trialing' (normal renewals, or the event
+// firing for unrelated reasons like a metadata change) are left alone.
+
+function subscriptionUpdatedEvent(status) {
+  return {
+    type: 'customer.subscription.updated',
+    data: { object: { customer: 'cus_test123', status } }
+  };
+}
+
+test('subscription.updated: past_due downgrades plan_status to free', async (t) => {
+  withEnv(t);
+  const updateCalls = [];
+  stubStripe(t, subscriptionUpdatedEvent('past_due'));
+  stubSupabase(t, { update: (table, data, col, val) => updateCalls.push({ table, data, col, val }) });
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler(mockReq({}), res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(updateCalls.length, 1);
+  assert.equal(updateCalls[0].table, 'users');
+  assert.equal(updateCalls[0].data.plan_status, 'free');
+  assert.equal(updateCalls[0].col, 'stripe_customer_id');
+  assert.equal(updateCalls[0].val, 'cus_test123');
+});
+
+test('subscription.updated: unpaid downgrades plan_status to free', async (t) => {
+  withEnv(t);
+  const updateCalls = [];
+  stubStripe(t, subscriptionUpdatedEvent('unpaid'));
+  stubSupabase(t, { update: (table, data, col, val) => updateCalls.push({ table, data, col, val }) });
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler(mockReq({}), res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(updateCalls.length, 1);
+  assert.equal(updateCalls[0].data.plan_status, 'free');
+});
+
+test('subscription.updated: canceled downgrades plan_status to free (safety net alongside subscription.deleted)', async (t) => {
+  withEnv(t);
+  const updateCalls = [];
+  stubStripe(t, subscriptionUpdatedEvent('canceled'));
+  stubSupabase(t, { update: (table, data, col, val) => updateCalls.push({ table, data, col, val }) });
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler(mockReq({}), res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(updateCalls.length, 1);
+  assert.equal(updateCalls[0].data.plan_status, 'free');
+});
+
+test('subscription.updated: active does NOT change plan_status (negative control)', async (t) => {
+  withEnv(t);
+  const updateCalls = [];
+  stubStripe(t, subscriptionUpdatedEvent('active'));
+  stubSupabase(t, { update: (table, data, col, val) => updateCalls.push({ table, data, col, val }) });
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler(mockReq({}), res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(updateCalls.length, 0, 'active status must never trigger a write');
+});
+
+test('subscription.updated: trialing does NOT change plan_status', async (t) => {
+  withEnv(t);
+  const updateCalls = [];
+  stubStripe(t, subscriptionUpdatedEvent('trialing'));
+  stubSupabase(t, { update: (table, data, col, val) => updateCalls.push({ table, data, col, val }) });
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler(mockReq({}), res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(updateCalls.length, 0);
 });
 
 test('rejects non-POST methods', async (t) => {
