@@ -14,7 +14,13 @@ export default async function handler(req, res) {
 
   try {
     const { plan, userId, email } = req.body || {};
-    const priceId = PRICE_IDS[plan];
+    // PRICE_IDS is a plain object literal, which inherits from
+    // Object.prototype — a plan value like '__proto__', 'constructor', or
+    // 'toString' would resolve via normal JS property lookup to a truthy
+    // inherited value (Object.prototype itself, or a built-in function),
+    // bypassing the `!priceId` guard below despite never being a real
+    // plan. Object.hasOwn() only matches an actual own property.
+    const priceId = typeof plan === 'string' && Object.hasOwn(PRICE_IDS, plan) ? PRICE_IDS[plan] : undefined;
     const validEmail = typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
     if (!priceId || !userId || !validEmail) {
