@@ -306,7 +306,7 @@ label{
   font-size:9px;letter-spacing:0.12em;text-transform:uppercase;
   color:var(--muted);margin-bottom:6px;
 }
-input[type=text],input[type=email],textarea{
+input[type=text],input[type=email],textarea,select{
   width:100%;background:var(--paper2);
   border:1.5px solid var(--border);
   border-radius:var(--r-sm);
@@ -316,7 +316,7 @@ input[type=text],input[type=email],textarea{
   outline:none;resize:vertical;
   transition:border-color .2s;-webkit-appearance:none;
 }
-input:focus,textarea:focus{border-color:var(--coral)}
+input:focus,textarea:focus,select:focus{border-color:var(--coral)}
 textarea{min-height:84px;line-height:1.55}
 .r2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 
@@ -917,6 +917,33 @@ textarea{min-height:84px;line-height:1.55}
     <button class="btn-p" onclick="doUpgrade()">Continue</button>
     <button class="btn-g" onclick="closePW()" style="width:100%;margin-top:8px">Maybe later</button>
     <p class="modal-legal">Secure payment · Auto-renews unless cancelled<br>By continuing you agree to our <a href="/terms" target="_blank" rel="noopener">Terms</a> &amp; <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a></p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ FLAG / REPORT RESULT MODAL -->
+<div class="modal-ov" id="flagModal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title" style="font-size:20px">Report this result</div>
+    <p class="modal-sub">Help us improve our AI moderation. Your report goes straight to the CatchFish team.</p>
+
+    <div class="fg">
+      <label>Reason</label>
+      <select id="flagReason">
+        <option>Inaccurate</option>
+        <option>Offensive or inappropriate</option>
+        <option>Misleading</option>
+        <option>Other</option>
+      </select>
+    </div>
+
+    <div class="fg">
+      <label>Additional details <span style="color:var(--muted2)">(optional)</span></label>
+      <textarea id="flagNote" placeholder="Anything else you'd like us to know? (optional)"></textarea>
+    </div>
+
+    <button class="btn-p" onclick="submitFlag()">Submit Report</button>
+    <button class="btn-g" onclick="closeFlagModal()" style="width:100%;margin-top:8px">Cancel</button>
   </div>
 </div>
 
@@ -2056,6 +2083,11 @@ function renderPaperResultInstructor(r){
     </div>
     <p class="modal-legal">This is a probability estimate based on automated indicators, not a fact. Always use your own judgment.</p>
 
+    <div class="disc">
+      <p><strong>⚠ Disclaimer:</strong> This report highlights patterns worth a follow-up conversation with the student — it is not proof of AI use or academic dishonesty. Textbook-specific observations may be incomplete or wrong; verify before acting.</p>
+      <button class="btn-g" style="margin-top:8px;font-size:11px;padding:8px 12px" onclick="openFlagModal('paper_check')">🚩 Report this result</button>
+    </div>
+
     <div class="card">
       <div class="card-hd"><span class="card-hd-icon">📝</span><h3>Assignment Fit</h3><span class="card-hd-tag">${esc(af.score ?? '—')}/100</span></div>
       <div class="cb">
@@ -2109,6 +2141,7 @@ function renderPaperResultWriter(r){
 
     <div class="disc">
       <p><strong>⚠ Before you read further:</strong> AI-detection signals are frequently wrong, and are known to disproportionately flag writing by non-native English speakers and people with certain personal styles — even when it's entirely their own work. Treat this as a self-check, not a verdict on you.</p>
+      <button class="btn-g" style="margin-top:8px;font-size:11px;padding:8px 12px" onclick="openFlagModal('paper_check')">🚩 Report this result</button>
     </div>
 
     <div class="card">
@@ -2194,9 +2227,14 @@ function renderEmailResult(r,domainInfo){
     ${verificationHTML}
     ${redHTML}
     ${greenHTML}
+
+    <div class="disc">
+      <p><strong>⚠ Disclaimer:</strong> CatchFish provides AI-generated risk indicators — not definitive verdicts. Results should never be used to harass or discriminate against any individual. The developers accept no liability for decisions made based on this analysis. Always use your own judgment.</p>
+      <button class="btn-g" style="margin-top:8px;font-size:11px;padding:8px 12px" onclick="openFlagModal('email_check')">🚩 Report this result</button>
+    </div>
   `;
 }
-  
+
   function tier(s){return s>=65?'hi':s>=35?'md':'lo'}
 
   // Every render function below inserts AI-response fields (and, for History's
@@ -2284,6 +2322,7 @@ function showResults(r){
 
     <div class="disc">
       <p><strong>⚠ Remember:</strong> This is an AI risk assessment, not a verdict. Real people sometimes score lower due to unusual bios or edited photos. Never use results to harass anyone. Stay safe and trust your instincts.</p>
+      <button class="btn-g" style="margin-top:8px;font-size:11px;padding:8px 12px" onclick="openFlagModal('profile_analyzer')">🚩 Report this result</button>
     </div>
   `;
 
@@ -2381,6 +2420,32 @@ function openPW(){
   if(continueBtn) continueBtn.textContent=isInstalledApp()?'Upgrade via browser':'Continue';
 }
 function closePW(){document.getElementById('pwModal').classList.remove('on')}
+
+let flagContext = null;
+function openFlagModal(tool){
+  flagContext = tool;
+  document.getElementById('flagModal').classList.add('on');
+}
+function closeFlagModal(){
+  document.getElementById('flagModal').classList.remove('on');
+  flagContext = null;
+}
+async function submitFlag(){
+  const reason = document.getElementById('flagReason').value;
+  const note = document.getElementById('flagNote').value.trim();
+  try{
+    await fetch('/api/report-content', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({tool: flagContext, userId: getUid(), reason, note})
+    });
+    toast('✅ Report submitted — thank you');
+  }catch(e){
+    toast('⚠️ Could not submit report. Please try again.');
+  }
+  closeFlagModal();
+}
+
 function selPlan(el,id){
   selPlanId=id;
   document.querySelectorAll('.plan-opt').forEach(o=>o.classList.remove('sel'));
