@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from '../lib/supabaseAdmin.js';
 
 const PRICE_IDS = {
   monthly: 'price_1TzMqVPJRgYrBGoz6zGWYRH1',
-  annual: 'price_1TzMtHPJRgYrBGoz45yV4QbQ',
+  annual: 'price_1U3MV1PJRgYrBGozO4ordIz6',
   single: 'price_1TzMu4PJRgYrBGozYQ5XgKTs'
 };
 
