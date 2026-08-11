@@ -1484,6 +1484,10 @@ const S = {
   settings:()=>S.get('cf_sets',{saveHist:true,autoClear:false})
 };
 
+function isInstalledApp(){
+  return document.referrer.includes('android-app://') || window.matchMedia('(display-mode: standalone)').matches;
+}
+
 // ════════════════════ ANONYMOUS USER ID
 function getUid(){
   let uid = S.get('cf_uid', null);
@@ -1699,6 +1703,8 @@ function updateUsageUI(){
   fill.style.width=pct+'%';
   fill.className='usage-fill'+(pct===0?' d':pct<=34?' w':'');
   document.getElementById('uReset').textContent=rem>0?'Resets daily at midnight':msToReset();
+  const upBtn=strip.querySelector('.btn-up');
+  if(upBtn) upBtn.textContent=isInstalledApp()?'Upgrade via browser':'Upgrade';
 }
 
 // ════════════════════ ANALYSIS
@@ -2320,7 +2326,12 @@ function clearHist(){
 }
 // ════════════════════ PAYWALL
 let selPlanId='monthly';
-function openPW(){document.getElementById('pwModal').classList.add('on')}
+function openPW(){
+  const pwModal=document.getElementById('pwModal');
+  pwModal.classList.add('on');
+  const continueBtn=pwModal.querySelector('.btn-p');
+  if(continueBtn) continueBtn.textContent=isInstalledApp()?'Upgrade via browser':'Continue';
+}
 function closePW(){document.getElementById('pwModal').classList.remove('on')}
 function selPlan(el,id){
   selPlanId=id;
@@ -2328,6 +2339,11 @@ function selPlan(el,id){
   el.classList.add('sel');
 }
 async function doUpgrade(){
+  if(isInstalledApp()){
+    toast('⚠️ In-app purchases are temporarily unavailable while we update to Google Play Billing. Please visit catch-fish-two.vercel.app in your browser to upgrade.');
+    return;
+  }
+
   const emailInput=document.getElementById('pwEmail');
   const email=emailInput.value.trim();
   if(!/^\S+@\S+\.\S+$/.test(email)){
