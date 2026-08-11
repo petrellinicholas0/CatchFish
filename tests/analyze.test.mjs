@@ -29,11 +29,31 @@ function mockRes() {
   return res;
 }
 
-function stubSupabaseAllowed(t) {
+// Branches on the RPC function name so each call gets a realistic response
+// shape for that function (a table-row array for check_and_increment_usage,
+// a bare boolean for acquire_request_slot/release_request_slot — matching
+// how PostgREST actually shapes scalar- vs table-returning function
+// results) rather than one generic response that happens to be truthy for
+// everything. `overrides` lets an individual test replace any one of the
+// three without having to re-stub the other two.
+function stubSupabaseAllowed(t, overrides = {}) {
   t.mock.module('../lib/supabaseAdmin.js', {
     namedExports: {
       getSupabaseAdmin: () => ({
-        rpc: async () => ({ data: [{ o_allowed: true, o_is_pro: false, o_usage_count: 1 }], error: null })
+        rpc: async (fn, args) => {
+          if (fn === 'check_and_increment_usage') {
+            return overrides.checkUsage
+              ? overrides.checkUsage(args)
+              : { data: [{ o_allowed: true, o_is_pro: false, o_usage_count: 1 }], error: null };
+          }
+          if (fn === 'acquire_request_slot') {
+            return overrides.acquireSlot ? overrides.acquireSlot(args) : { data: true, error: null };
+          }
+          if (fn === 'release_request_slot') {
+            return overrides.releaseSlot ? overrides.releaseSlot(args) : { data: null, error: null };
+          }
+          throw new Error(`unexpected rpc call in test: ${fn}`);
+        }
       })
     }
   });
@@ -305,4 +325,232 @@ test('photo cap: does not apply to email/paper tools (they never carry image blo
   const res = mockRes();
   await handler({ method: 'POST', headers: { 'x-forwarded-for': '203.0.113.101' }, body: { tool: 'email', userId: VALID_UID, emailText: 'x' } }, res);
   assert.equal(res.statusCode, 200);
+});
+
+// ════════════════════ Pro soft cap (150/day, logged not blocked) ════════
+// The overage itself is logged entirely inside the check_and_increment_usage
+// Postgres function (an INSERT into pro_usage_overages — see migration
+// 0007), not observable from this JS layer, which only ever sees
+// o_allowed/o_is_pro/o_usage_count regardless of whether an overage was
+// logged. That DB-side logging was verified directly against a real local
+// Postgres instance (150 allowed with 0 log rows, #151 still allowed with
+// exactly 1 log row, calendar-day reset). What's verified here is the
+// api/analyze.js side of the contract: the new p_pro_daily_limit parameter
+// is actually passed through to the RPC call, and a response simulating a
+// Pro user well past the cap is still let through with a 200 rather than
+// a 402 -- the soft cap can never block a Pro request from this layer.
+
+test('pro soft cap: passes p_pro_daily_limit=150 to check_and_increment_usage', async (t) => {
+  let capturedArgs;
+  stubSupabaseAllowed(t, {
+    checkUsage: (args) => {
+      capturedArgs = args;
+      return { data: [{ o_allowed: true, o_is_pro: true, o_usage_count: 5 }], error: null };
+    }
+  });
+  stubAnthropicFetch(t);
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', body: { tool: 'profile', userId: VALID_UID, bio: 'x' } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(capturedArgs.p_pro_daily_limit, 150);
+  assert.equal(capturedArgs.p_free_limit, 3);
+  assert.equal(capturedArgs.p_reset_hours, 24);
+});
+
+test('pro soft cap: a Pro response well past 150/day (simulating request #151+) is still allowed, never a 402', async (t) => {
+  stubSupabaseAllowed(t, {
+    checkUsage: () => ({ data: [{ o_allowed: true, o_is_pro: true, o_usage_count: 219 }], error: null })
+  });
+  stubAnthropicFetch(t);
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', body: { tool: 'profile', userId: VALID_UID, bio: 'x' } }, res);
+
+  assert.equal(res.statusCode, 200, 'the soft cap must never turn into a 402 for Pro, no matter how high o_usage_count is');
+});
+
+// ════════════════════ Concurrency cap (max 3 in flight per userId) ══════
+// Independent of the daily-limit/soft-cap check above; applies to every
+// plan. Stateful mocks below faithfully mirror the real
+// acquire_request_slot/release_request_slot semantics (cap of 3,
+// increment-on-acquire, decrement-on-release, verified for real against
+// Postgres separately) so these tests exercise the actual handler code
+// path — not just the SQL — including genuinely overlapping in-flight
+// requests via a deferred fetch mock.
+
+function stubConcurrency(t, cap = 3, overrides = {}) {
+  let inFlight = 0;
+  const acquireCalls = [];
+  const releaseCalls = [];
+  t.mock.module('../lib/supabaseAdmin.js', {
+    namedExports: {
+      getSupabaseAdmin: () => ({
+        rpc: async (fn, args) => {
+          if (fn === 'check_and_increment_usage') {
+            return overrides.checkUsage
+              ? overrides.checkUsage(args)
+              : { data: [{ o_allowed: true, o_is_pro: false, o_usage_count: 1 }], error: null };
+          }
+          if (fn === 'acquire_request_slot') {
+            acquireCalls.push(args.p_user_id);
+            if (overrides.acquireSlot) return overrides.acquireSlot(args);
+            if (inFlight >= cap) return { data: false, error: null };
+            inFlight++;
+            return { data: true, error: null };
+          }
+          if (fn === 'release_request_slot') {
+            releaseCalls.push(args.p_user_id);
+            if (overrides.releaseSlot) return overrides.releaseSlot(args);
+            inFlight = Math.max(0, inFlight - 1);
+            return { data: null, error: null };
+          }
+          throw new Error(`unexpected rpc call in test: ${fn}`);
+        }
+      })
+    }
+  });
+  return { acquireCalls, releaseCalls, get inFlight() { return inFlight; } };
+}
+
+// Lets a test hold a fetch() call open indefinitely and resolve pending
+// calls one at a time, FIFO, to simulate genuinely overlapping requests.
+function stubDeferredFetch(t) {
+  const queue = [];
+  t.mock.method(globalThis, 'fetch', () => new Promise((resolve) => {
+    queue.push(() => resolve({ ok: true, json: async () => ({ content: [{ text: '{}' }] }) }));
+  }));
+  return {
+    resolveOldest() {
+      const fn = queue.shift();
+      if (!fn) throw new Error('no pending fetch to resolve');
+      fn();
+    },
+    get pendingCount() { return queue.length; }
+  };
+}
+
+test('concurrency cap: a 4th simultaneous request is rejected with 429 while 3 are in flight, and a 5th succeeds once one releases', async (t) => {
+  const state = stubConcurrency(t);
+  const deferred = stubDeferredFetch(t);
+  const { default: handler } = await loadHandler();
+
+  const fire = (bio) => {
+    const res = mockRes();
+    const promise = handler({ method: 'POST', body: { tool: 'profile', userId: VALID_UID, bio } }, res);
+    return { res, promise };
+  };
+
+  const r1 = fire('req1');
+  const r2 = fire('req2');
+  const r3 = fire('req3');
+  // Let all three progress past acquire_request_slot and hang at fetch(),
+  // each holding its slot.
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(deferred.pendingCount, 3);
+  assert.equal(state.inFlight, 3);
+
+  const r4 = fire('req4-should-be-rejected');
+  await r4.promise;
+  assert.equal(r4.res.statusCode, 429);
+  assert.match(r4.res.body.error, /too many concurrent/i);
+  assert.equal(state.inFlight, 3, 'a rejected 4th must never touch the in-flight count');
+  assert.equal(deferred.pendingCount, 3, 'a rejected 4th must never reach fetch()');
+
+  // Release the oldest held slot -- its finally block must call
+  // release_request_slot.
+  deferred.resolveOldest();
+  await r1.promise;
+  assert.equal(r1.res.statusCode, 200);
+  assert.equal(state.inFlight, 2, 'releasing one slot must drop the count');
+
+  // A 5th request fired now (a slot is free) should succeed.
+  const r5 = fire('req5-should-succeed-after-release');
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(state.inFlight, 3, 'the 5th should have acquired the freed slot');
+
+  // Drain everything left (req2, req3, req5) and confirm all succeed.
+  deferred.resolveOldest();
+  deferred.resolveOldest();
+  deferred.resolveOldest();
+  await Promise.all([r2.promise, r3.promise, r5.promise]);
+  assert.equal(r2.res.statusCode, 200);
+  assert.equal(r3.res.statusCode, 200);
+  assert.equal(r5.res.statusCode, 200);
+  assert.equal(state.inFlight, 0, 'every acquired slot was eventually released');
+});
+
+test('concurrency cap: acquire_request_slot is called before the Anthropic fetch, release_request_slot exactly once after a normal success', async (t) => {
+  const state = stubConcurrency(t);
+  stubAnthropicFetch(t);
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', body: { tool: 'profile', userId: VALID_UID, bio: 'x' } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(state.acquireCalls.length, 1);
+  assert.equal(state.acquireCalls[0], VALID_UID);
+  assert.equal(state.releaseCalls.length, 1);
+  assert.equal(state.releaseCalls[0], VALID_UID);
+  assert.equal(state.inFlight, 0);
+});
+
+test('concurrency cap: release_request_slot still runs when the Anthropic call throws (a stuck slot must never happen)', async (t) => {
+  const state = stubConcurrency(t);
+  t.mock.method(globalThis, 'fetch', async () => { throw new Error('simulated network failure'); });
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', body: { tool: 'profile', userId: VALID_UID, bio: 'x' } }, res);
+
+  assert.equal(res.statusCode, 500);
+  assert.equal(state.releaseCalls.length, 1, 'the slot must still be released even though the request itself failed');
+  assert.equal(state.inFlight, 0);
+});
+
+test('concurrency cap: release_request_slot still runs on an Anthropic timeout (AbortError)', async (t) => {
+  const state = stubConcurrency(t);
+  t.mock.method(globalThis, 'fetch', () => new Promise((_resolve, reject) => {
+    const err = new Error('The operation was aborted');
+    err.name = 'AbortError';
+    // Reject on the next tick rather than synchronously, closer to a real
+    // abort firing partway through an in-flight call.
+    setTimeout(() => reject(err), 5);
+  }));
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', body: { tool: 'profile', userId: VALID_UID, bio: 'x' } }, res);
+
+  assert.equal(res.statusCode, 504);
+  assert.equal(state.releaseCalls.length, 1, 'a timeout must still release the slot');
+  assert.equal(state.inFlight, 0);
+});
+
+test('concurrency cap: acquire_request_slot returning false rejects with 429 before ever calling Anthropic', async (t) => {
+  const fetchMock = t.mock.method(globalThis, 'fetch', async () => { throw new Error('fetch should never be called'); });
+  stubSupabaseAllowed(t, { acquireSlot: () => ({ data: false, error: null }) });
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', body: { tool: 'profile', userId: VALID_UID, bio: 'x' } }, res);
+
+  assert.equal(res.statusCode, 429);
+  assert.equal(fetchMock.mock.callCount(), 0);
+});
+
+test('concurrency cap: an acquire_request_slot RPC error fails closed (500), never proceeds to Anthropic', async (t) => {
+  const fetchMock = t.mock.method(globalThis, 'fetch', async () => { throw new Error('fetch should never be called'); });
+  stubSupabaseAllowed(t, { acquireSlot: () => ({ data: null, error: { message: 'connection refused' } }) });
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', body: { tool: 'profile', userId: VALID_UID, bio: 'x' } }, res);
+
+  assert.equal(res.statusCode, 500);
+  assert.equal(fetchMock.mock.callCount(), 0);
 });
