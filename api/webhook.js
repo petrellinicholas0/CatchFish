@@ -92,6 +92,32 @@ export default async function handler(req, res) {
         break;
       }
 
+      case 'customer.subscription.updated': {
+        const subscription = event.data.object;
+
+        // A failing card doesn't cancel a subscription outright — Stripe
+        // moves it through 'past_due' (and eventually 'unpaid', depending
+        // on the account's dunning settings) while it retries the charge,
+        // and only fires customer.subscription.deleted once that retry
+        // schedule is exhausted, which can be days to weeks later. Without
+        // this, a user with a failing card keeps full active access for
+        // that entire window. 'canceled' is handled here too as a safety
+        // net alongside the dedicated subscription.deleted handler above,
+        // in case that event is ever missed. Same lookup pattern as
+        // subscription.deleted (by stripe_customer_id, not the metadata
+        // userId) for consistency. 'active'/'trialing' (normal renewals,
+        // or subscription.updated firing for unrelated reasons like a
+        // metadata change) are deliberately left untouched — this handler
+        // only ever downgrades, never grants access.
+        if (subscription.status === 'past_due' || subscription.status === 'unpaid' || subscription.status === 'canceled') {
+          await supabase
+            .from('users')
+            .update({ plan_status: 'free' })
+            .eq('stripe_customer_id', subscription.customer);
+        }
+        break;
+      }
+
       default:
         break;
     }
