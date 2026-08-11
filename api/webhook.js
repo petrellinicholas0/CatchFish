@@ -43,8 +43,13 @@ export default async function handler(req, res) {
       case 'checkout.session.completed': {
         const session = event.data.object;
         const userId = session.client_reference_id || session.metadata?.userId;
+        const plan = session.metadata?.plan;
 
-        if (userId) {
+        if (!userId) {
+          break;
+        }
+
+        if (plan === 'monthly' || plan === 'annual') {
           await supabase
             .from('users')
             .update({
@@ -52,6 +57,27 @@ export default async function handler(req, res) {
               stripe_customer_id: session.customer
             })
             .eq('id', userId);
+        } else if (plan === 'single') {
+          // 'single' is Stripe mode: 'payment' (one-time) — there's no
+          // subscription object for it, so customer.subscription.deleted
+          // never fires to revoke access later. Granting plan_status:
+          // 'active' here would turn a $0.99 purchase into a permanent,
+          // unlimited Pro subscription. Grant exactly one analysis credit
+          // instead, atomically (see grant_single_purchase_credit), and
+          // leave plan_status untouched — it stays 'free' unless the user
+          // separately has an active subscription.
+          const { error: creditError } = await supabase.rpc('grant_single_purchase_credit', {
+            p_user_id: userId,
+            p_stripe_customer_id: session.customer
+          });
+          if (creditError) {
+            console.error('Failed to grant single-purchase credit:', creditError.message);
+          }
+        } else {
+          // Unrecognized or missing plan on a completed session — do
+          // nothing destructive rather than guessing (in particular,
+          // never default to granting active status).
+          console.warn(`checkout.session.completed: unrecognized or missing plan "${plan}" for user ${userId}; no entitlement change applied`);
         }
         break;
       }
