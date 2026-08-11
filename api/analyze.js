@@ -11,6 +11,84 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // bounds otherwise-unbounded input from driving up per-request cost.
 const MAX_REQUEST_CHARS = 300000;
 
+// The Profile Analyzer's client-side upload UI caps photos at 6 (see
+// MAX_PHOTOS in index.html), but that was never enforced here — a direct
+// call could attach as many image blocks as fit under MAX_REQUEST_CHARS,
+// which in practice allows hundreds of small/garbage "image" blocks
+// forwarded straight to the Anthropic API. Enforced independently of the
+// byte-size cap below.
+const MAX_PHOTOS = 6;
+
+// ════════════════════ IP-BASED RATE LIMITING (defense in depth) ════════
+// The per-userId usage limit (below) is the primary control, but userId is
+// a client-generated UUID with no binding to a device or session — a
+// script can mint a fresh one per request and get 3 more free analyses
+// indefinitely, at whatever rate it can sustain. This adds a second,
+// independent layer keyed on request IP, so at least *that* axis is
+// bounded too.
+//
+// Implementation choice: neither Vercel KV nor Upstash Redis is
+// configured in this project (no KV_*/UPSTASH_* env vars, no matching
+// package in package.json) as of this fix, so this falls back to a
+// plain in-memory counter, per the audit's explicit fallback option.
+// Known, accepted limitations of that choice:
+//   - Does NOT survive cold starts — a fresh function instance starts
+//     with an empty counter, so an attacker who can trigger/wait out a
+//     cold start (or who simply gets routed to a different warm
+//     instance under concurrent load — Vercel can and does run multiple
+//     instances of the same function simultaneously) gets a partial
+//     reset. This is not a durable, globally-consistent limit.
+//   - x-forwarded-for is attacker-influenceable in principle (rotating
+//     proxies/VPNs) even though Vercel's own edge sets it for real
+//     traffic and it can't be forged past Vercel's own proxy hop.
+// Both are why this is explicitly framed as raising the bar against a
+// naive UUID-farming script, not a hard guarantee — the per-userId check
+// remains the primary control. For a durable, cross-instance limit,
+// migrate this to Vercel KV or Upstash Redis (swap ipHits for a real
+// INCR-with-TTL call; the checkIpRateLimit() call site below wouldn't
+// need to change).
+const IP_RATE_LIMIT = 10; // requests per IP per window
+const IP_RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+// Chosen as a starting point, not a settled number: high enough that a
+// handful of people behind the same corporate/campus/carrier-NAT IP
+// shouldn't collide with each other in normal use (each legitimate free
+// user is separately capped at 3 requests total by the per-userId check
+// anyway, so 10 covers ~3 concurrent real users on one IP with room to
+// spare), while still meaningfully slowing a script that's minting fresh
+// userIds to farm unlimited free analyses from a single machine/IP. Worth
+// revisiting with real traffic data — this is a product trade-off
+// (false-positive risk on shared IPs vs. abuse resistance), not just a
+// technical one.
+const ipHits = new Map();
+
+function extractClientIp(req) {
+  const xff = req.headers && req.headers['x-forwarded-for'];
+  if (!xff) return null;
+  const first = (Array.isArray(xff) ? xff[0] : xff).split(',')[0].trim();
+  return first || null;
+}
+
+// Fixed-window counter. Fails OPEN (allows the request) when no IP can be
+// determined at all, since this is a secondary layer, not the primary
+// boundary, and refusing every request just because a header was absent
+// in some non-standard deployment context would be a worse failure mode
+// than a missed rate-limit edge case.
+function checkIpRateLimit(ip) {
+  if (!ip) return true;
+  const now = Date.now();
+  const entry = ipHits.get(ip);
+  if (!entry || now - entry.windowStart >= IP_RATE_WINDOW_MS) {
+    ipHits.set(ip, { count: 1, windowStart: now });
+    return true;
+  }
+  if (entry.count >= IP_RATE_LIMIT) {
+    return false;
+  }
+  entry.count += 1;
+  return true;
+}
+
 // ════════════════════ SERVER-SIDE SYSTEM PROMPTS ════════════════════
 // These used to be built client-side in index.html and sent to this
 // endpoint as a plain `system` string, which this handler only validated
@@ -247,6 +325,10 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  if (!checkIpRateLimit(extractClientIp(req))) {
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
+
   const body = req.body || {};
 
   // The client must never be able to supply or override the system
@@ -271,6 +353,10 @@ export default async function handler(req, res) {
     built = buildProfileContent(body);
     if (!built.hasSubmission) {
       return res.status(400).json({ error: 'Add a photo or bio to analyze' });
+    }
+    const imageCount = built.content.filter((block) => block.type === 'image').length;
+    if (imageCount > MAX_PHOTOS) {
+      return res.status(400).json({ error: `Max ${MAX_PHOTOS} photos` });
     }
   } else if (tool === 'email') {
     system = EMAIL_SYSTEM;

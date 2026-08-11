@@ -11,8 +11,15 @@
 // keyed by the declared conflict column) to prove a colliding email with
 // a different id now creates a separate row instead of overwriting the
 // existing one.
+//
+// Also covers audit finding #5 (MEDIUM): PRICE_IDS[plan] on a plain
+// object literal let '__proto__'/'constructor'/etc. resolve to a truthy
+// inherited value, bypassing plan validation.
+//
+// Every mock below is registered via the per-test `t.mock` tracker, so
+// Node automatically restores it when the test ends -- pass or fail.
 
-import { test, mock } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 // Minimal stand-in for the one Supabase call path api/checkout.js uses:
@@ -48,6 +55,20 @@ function mockRes() {
   return res;
 }
 
+function stubStripe(t, impl) {
+  t.mock.module('../lib/stripeAdmin.js', {
+    namedExports: {
+      getStripe: impl ?? (() => ({
+        checkout: { sessions: { create: async () => ({ url: 'https://checkout.stripe.com/fake' }) } }
+      }))
+    }
+  });
+}
+
+function stubSupabase(t, impl) {
+  t.mock.module('../lib/supabaseAdmin.js', { namedExports: { getSupabaseAdmin: impl } });
+}
+
 async function loadHandler() {
   return import(`../api/checkout.js?t=${Date.now()}-${Math.random()}`);
 }
@@ -55,21 +76,12 @@ async function loadHandler() {
 const VICTIM_ID = '11111111-1111-4111-8111-111111111111';
 const ATTACKER_ID = '22222222-2222-4222-8222-222222222222';
 
-test('checkout upsert keys on id: a colliding email with a different id creates a separate row, never overwrites the existing one', async () => {
+test('checkout upsert keys on id: a colliding email with a different id creates a separate row, never overwrites the existing one', async (t) => {
   const rows = [
     { id: VICTIM_ID, email: 'victim@example.com', plan_status: 'active', stripe_customer_id: 'cus_realvictim123', usage_count: 5 }
   ];
-
-  const stripeMock = mock.module('../lib/stripeAdmin.js', {
-    namedExports: {
-      getStripe: () => ({
-        checkout: { sessions: { create: async () => ({ url: 'https://checkout.stripe.com/fake' }) } }
-      })
-    }
-  });
-  const supabaseMock = mock.module('../lib/supabaseAdmin.js', {
-    namedExports: { getSupabaseAdmin: () => makeUsersTableMock(rows) }
-  });
+  stubStripe(t);
+  stubSupabase(t, () => makeUsersTableMock(rows));
 
   const { default: handler } = await loadHandler();
   const res = mockRes();
@@ -93,26 +105,14 @@ test('checkout upsert keys on id: a colliding email with a different id creates 
   assert.notEqual(attackerRow.id, victimRow.id);
   assert.equal(attackerRow.plan_status, 'free', 'attacker must NOT inherit the victim\'s paid status');
   assert.equal(rows.length, 2, 'no row was overwritten — a second row was created instead');
-
-  stripeMock.restore();
-  supabaseMock.restore();
 });
 
-test('checkout upsert: the same device (same id) retrying checkout updates its own row, not a duplicate', async () => {
+test('checkout upsert: the same device (same id) retrying checkout updates its own row, not a duplicate', async (t) => {
   const rows = [
     { id: ATTACKER_ID, email: 'typo@example.com', plan_status: 'free', usage_count: 0 }
   ];
-
-  const stripeMock = mock.module('../lib/stripeAdmin.js', {
-    namedExports: {
-      getStripe: () => ({
-        checkout: { sessions: { create: async () => ({ url: 'https://checkout.stripe.com/fake' }) } }
-      })
-    }
-  });
-  const supabaseMock = mock.module('../lib/supabaseAdmin.js', {
-    namedExports: { getSupabaseAdmin: () => makeUsersTableMock(rows) }
-  });
+  stubStripe(t);
+  stubSupabase(t, () => makeUsersTableMock(rows));
 
   const { default: handler } = await loadHandler();
   const res = mockRes();
@@ -125,29 +125,16 @@ test('checkout upsert: the same device (same id) retrying checkout updates its o
   assert.equal(res.statusCode, 200);
   assert.equal(rows.length, 1, 'still one row for this device id');
   assert.equal(rows[0].email, 'corrected@example.com');
-
-  stripeMock.restore();
-  supabaseMock.restore();
 });
 
-test('checkout upsert is called with onConflict: "id"', async () => {
+test('checkout upsert is called with onConflict: "id"', async (t) => {
   let capturedOpts = null;
-  const stripeMock = mock.module('../lib/stripeAdmin.js', {
-    namedExports: {
-      getStripe: () => ({
-        checkout: { sessions: { create: async () => ({ url: 'https://checkout.stripe.com/fake' }) } }
-      })
-    }
-  });
-  const supabaseMock = mock.module('../lib/supabaseAdmin.js', {
-    namedExports: {
-      getSupabaseAdmin: () => ({
-        from: () => ({
-          upsert: async (data, opts) => { capturedOpts = opts; return { error: null }; }
-        })
-      })
-    }
-  });
+  stubStripe(t);
+  stubSupabase(t, () => ({
+    from: () => ({
+      upsert: async (data, opts) => { capturedOpts = opts; return { error: null }; }
+    })
+  }));
 
   const { default: handler } = await loadHandler();
   const res = mockRes();
@@ -155,7 +142,43 @@ test('checkout upsert is called with onConflict: "id"', async () => {
 
   assert.equal(res.statusCode, 200);
   assert.equal(capturedOpts.onConflict, 'id');
+});
 
-  stripeMock.restore();
-  supabaseMock.restore();
+// ════════════════════ Finding #5: PRICE_IDS prototype-pollution guard ═══
+
+test('plan lookup: dangerous inherited-property plan values are rejected as invalid (400), never reach Stripe', async (t) => {
+  const stripeCreate = t.mock.fn(async () => ({ url: 'https://checkout.stripe.com/should-not-be-called' }));
+  stubStripe(t, () => ({ checkout: { sessions: { create: stripeCreate } } }));
+  stubSupabase(t, () => ({ from: () => ({ upsert: async () => ({ error: null }) }) }));
+
+  const { default: handler } = await loadHandler();
+
+  for (const plan of ['__proto__', 'constructor', 'toString', 'valueOf', 'hasOwnProperty', 'isPrototypeOf']) {
+    const res = mockRes();
+    await handler({ method: 'POST', headers: {}, body: { plan, userId: ATTACKER_ID, email: 'x@y.com' } }, res);
+    assert.equal(res.statusCode, 400, `plan="${plan}" should be rejected as invalid, got ${res.statusCode}`);
+  }
+  assert.equal(stripeCreate.mock.callCount(), 0, 'Stripe must never be called with a dangerous plan value');
+});
+
+test('plan lookup: legitimate plan values still work correctly', async (t) => {
+  let capturedParams = null;
+  stubStripe(t, () => ({
+    checkout: { sessions: { create: async (params) => { capturedParams = params; return { url: 'https://checkout.stripe.com/real' }; } } }
+  }));
+  stubSupabase(t, () => ({ from: () => ({ upsert: async () => ({ error: null }) }) }));
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', headers: {}, body: { plan: 'monthly', userId: ATTACKER_ID, email: 'x@y.com' } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(capturedParams.line_items[0].price, 'price_1TzMqVPJRgYrBGoz6zGWYRH1');
+});
+
+test('plan lookup: an unrecognized plain-string plan is still rejected (unchanged behavior)', async () => {
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', headers: {}, body: { plan: 'not-a-real-plan', userId: ATTACKER_ID, email: 'x@y.com' } }, res);
+  assert.equal(res.statusCode, 400);
 });

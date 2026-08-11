@@ -4,10 +4,14 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "test": "node --experimental-test-module-mocks --test tests/*.test.mjs"
+    "test": "node --experimental-test-module-mocks --test tests/*.test.mjs",
+    "test:e2e": "node tests/xss-paper-score.pw.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",
     "stripe": "^22.4.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
   }
 }
