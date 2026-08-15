@@ -1,0 +1,32 @@
+-- Run this in the Supabase SQL editor (or via `supabase db push`) for
+-- whichever project APP_SUPABASE_URL points at, before deploying the
+-- current api/analyze.js (the fix itself lives entirely in this
+-- migration — no application code changes).
+--
+-- public.users.email currently has a live NOT NULL constraint that was
+-- never declared in any migration in this repo (0001_create_users_table.sql
+-- declares it as plain `email text` — nullable, no default). This is the
+-- same class of undocumented schema drift 0003_no_unique_constraint_on_
+-- email.sql already flagged for a UNIQUE constraint on this same column.
+--
+-- check_and_increment_usage (0002_usage_tracking.sql, extended by 0006 and
+-- 0007) creates a brand-new user's row with only id/plan_status/
+-- usage_count/usage_reset_at — never email, since none of index.html's
+-- three analysis flows (runAnalysis, runEmailAnalysis, runPaperAnalysis)
+-- collect or send an email before a user upgrades. Against a live NOT
+-- NULL constraint, that INSERT fails outright, which surfaces in
+-- api/analyze.js as "usage check failed: null value in column "email" of
+-- relation "users" violates not-null constraint" -- a 500 on literally
+-- every free-tier user's very first /api/analyze call, on any of the
+-- three tools, on any device that hasn't already been through Stripe
+-- checkout.
+--
+-- This migration is a pure widening of the constraint: dropping NOT NULL
+-- only permits a value that was already disallowed before; it can't break
+-- any row or code path that currently relies on email being present.
+-- Deliberately NOT touching any unique constraint on email — Postgres
+-- allows any number of NULL values under a unique constraint (NULL is
+-- never considered equal to another NULL), so this has no interaction
+-- with the onConflict:'id' upsert logic in api/checkout.js.
+
+alter table public.users alter column email drop not null;
