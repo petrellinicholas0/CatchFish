@@ -775,6 +775,38 @@ textarea{min-height:84px;line-height:1.55}
   font-size:12px;line-height:1.7;color:var(--ink);white-space:pre-wrap;
 }
 
+/* ─── EVIDENCE PACKET (pure data readout, not narrative) ─────────────────────────────── */
+.ev-section{margin-bottom:14px}
+.ev-section:last-of-type{margin-bottom:0}
+.ev-section-hd{
+  font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;
+  letter-spacing:0.06em;text-transform:uppercase;color:var(--muted2);
+  margin-bottom:6px;
+}
+.ev-empty{
+  font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted2);
+  font-style:italic;
+}
+.ev-loading{
+  font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);
+  padding:20px 0;text-align:center;
+}
+.ev-page-row{
+  background:var(--paper2);border:1.5px solid var(--border);
+  border-radius:var(--r-sm);padding:10px 12px;margin-bottom:6px;
+}
+.ev-page-row:last-child{margin-bottom:0}
+.ev-page-domain{font-size:12px;font-weight:700;margin-bottom:2px}
+.ev-page-date{font-weight:400;color:var(--muted2);font-size:10px}
+.ev-page-title{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:2px}
+.ev-page-url{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted2);word-break:break-all}
+.ev-submitted-text{
+  font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink);
+  white-space:pre-wrap;background:var(--paper2);border:1.5px solid var(--border);
+  border-radius:var(--r-sm);padding:10px 12px;word-break:break-word;
+}
+.ev-empty-inline{color:var(--muted2);font-style:italic}
+
 /* ─── ONBOARDING ─────────────────────────────── */
 .ob-ov{
   position:fixed;inset:0;background:var(--paper);
@@ -972,6 +1004,16 @@ textarea{min-height:84px;line-height:1.55}
     <div class="modal-title" style="font-size:20px">🕵️ Ask the Inspector</div>
     <div id="inspectorBody"></div>
     <button class="btn-g" onclick="closeInspectorModal()" style="width:100%;margin-top:8px">Close</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ EVIDENCE PACKET (Pro-only, pure data, no AI) -->
+<div class="modal-ov" id="evidencePacketModal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title" style="font-size:20px">📋 Evidence Packet</div>
+    <div id="evidencePacketBody"></div>
+    <button class="btn-g" onclick="closeEvidencePacketModal()" style="width:100%;margin-top:8px">Close</button>
   </div>
 </div>
 
@@ -2420,7 +2462,8 @@ function reverseSearchDetailHTML(rs){
       return `🔎 Photo ${i+1}: found on ${x.matchCount} other page${x.matchCount===1?'':'s'}${domains.length?' — '+domains.join(', '):''}`;
     }).filter(Boolean).join('<br>');
     return `<div class="check-detail" style="margin-top:6px">${lines}</div>
-    <button class="btn-s" style="margin-top:8px;width:100%" onclick="askInspector()">🕵️ Ask the Inspector for removal help</button>`;
+    <button class="btn-s" style="margin-top:8px;width:100%" onclick="askInspector()">🕵️ Ask the Inspector for removal help</button>
+    <button class="btn-s" style="margin-top:8px;width:100%" onclick="generateEvidencePacket()">📋 Generate Evidence Packet</button>`;
   }
   return '';
 }
@@ -2481,6 +2524,160 @@ async function askInspector(){
 
 function closeInspectorModal(){
   document.getElementById('inspectorModal').classList.remove('on');
+}
+
+// Pro-only feature: compiles reverse-search results into a structured,
+// factual evidence document via api/evidence-packet.js. Unlike Ask the
+// Inspector, this is NOT an AI feature -- api/evidence-packet.js never
+// calls the Anthropic API, it's pure data formatting (Vision API fields +
+// RDAP domain-age lookups + the user's own submitted text, passed
+// through verbatim). S.isPro() below is a courtesy UI gate only -- the
+// real check is server-side, same pattern as askInspector().
+//
+// This exact disclaimer text is hardcoded here, never generated, and is
+// prepended FIRST -- before any data -- in every render of the modal
+// body (loading state and final packet alike), so it's always the first
+// thing seen regardless of what the API returns.
+const EVIDENCE_DISCLAIMER_HTML=`<div class="disc" style="margin-bottom:14px"><p><strong>⚠ Not legal advice:</strong> This is a factual summary of what was found — not a legal conclusion, not legal advice, and not a determination of infringement. CatchFish doesn't decide what this means or what to do next; that's your call, ideally with an attorney if the situation is serious. See "How DMCA Takedowns Work" in the Learn tab for general background.</p></div>`;
+
+let curEvidencePacket=null;
+
+function evPacketListHTML(items,emptyLabel){
+  if(!items||!items.length) return `<div class="ev-empty">${esc(emptyLabel)}</div>`;
+  return `<ul class="flag-list">${items.map(m=>`<li class="flag-row"><span class="flag-txt">Photo ${m.imageIndex+1}: ${esc(m.url)}</span></li>`).join('')}</ul>`;
+}
+
+function evidencePacketBodyHTML(p){
+  const pagesHTML=(p.pagesFound&&p.pagesFound.length)
+    ? p.pagesFound.map(pg=>`
+      <div class="ev-page-row">
+        <div class="ev-page-domain">${esc(pg.domain||'(unknown domain)')} <span class="ev-page-date">${pg.domainRegisteredDate?'· registered '+esc(pg.domainRegisteredDate):'· registration date unavailable'}</span></div>
+        ${pg.pageTitle?`<div class="ev-page-title">${esc(pg.pageTitle)}</div>`:''}
+        <div class="ev-page-url">${esc(pg.url)}</div>
+      </div>`).join('')
+    : `<div class="ev-empty">No pages found</div>`;
+
+  return `
+    <div class="ev-section">
+      <div class="ev-section-hd">Exact Matches Found (${p.exactMatches.length})</div>
+      ${evPacketListHTML(p.exactMatches,'No exact matches found')}
+    </div>
+    <div class="ev-section">
+      <div class="ev-section-hd">Partial/Cropped Matches (${p.partialMatches.length})</div>
+      ${evPacketListHTML(p.partialMatches,'No partial matches found')}
+    </div>
+    <div class="ev-section">
+      <div class="ev-section-hd">Visually Similar (Not Confirmed) (${p.similarNotConfirmed.length})</div>
+      ${evPacketListHTML(p.similarNotConfirmed,'None found')}
+    </div>
+    <div class="ev-section">
+      <div class="ev-section-hd">Pages Where Found (${p.pagesFound.length})</div>
+      ${pagesHTML}
+    </div>
+    <div class="ev-section">
+      <div class="ev-section-hd">Your Submitted Text (Verbatim)</div>
+      <div class="ev-submitted-text">${p.submittedTextExcerpt?esc(p.submittedTextExcerpt):'<span class="ev-empty-inline">(none provided)</span>'}</div>
+    </div>
+    <button class="btn-s" style="width:100%;margin-top:4px" onclick="copyEvidencePacket()">📋 Copy to Clipboard</button>
+  `;
+}
+
+// Plain-text rendering for the clipboard -- structured with clear section
+// headers so it can be pasted directly into a platform's DMCA report form
+// or an email to an attorney, same content as the modal, just unstyled.
+function buildEvidencePacketPlainText(p){
+  const lines=[];
+  lines.push('CATCHFISH EVIDENCE PACKET');
+  lines.push('Generated: '+p.generatedAt);
+  lines.push('');
+  lines.push('DISCLAIMER: This is a factual summary of what was found — not a legal conclusion, not legal advice, and not a determination of infringement. CatchFish doesn\'t decide what this means or what to do next; that\'s your call, ideally with an attorney if the situation is serious. See "How DMCA Takedowns Work" in the Learn tab for general background.');
+  lines.push('');
+
+  lines.push(`=== EXACT MATCHES FOUND (${p.exactMatches.length}) ===`);
+  if(!p.exactMatches.length) lines.push('(none)');
+  p.exactMatches.forEach(m=>lines.push(`Photo ${m.imageIndex+1}: ${m.url}`));
+  lines.push('');
+
+  lines.push(`=== PARTIAL/CROPPED MATCHES (${p.partialMatches.length}) ===`);
+  if(!p.partialMatches.length) lines.push('(none)');
+  p.partialMatches.forEach(m=>lines.push(`Photo ${m.imageIndex+1}: ${m.url}`));
+  lines.push('');
+
+  lines.push(`=== VISUALLY SIMILAR - NOT CONFIRMED (${p.similarNotConfirmed.length}) ===`);
+  if(!p.similarNotConfirmed.length) lines.push('(none)');
+  p.similarNotConfirmed.forEach(m=>lines.push(`Photo ${m.imageIndex+1}: ${m.url}`));
+  lines.push('');
+
+  lines.push(`=== PAGES WHERE FOUND (${p.pagesFound.length}) ===`);
+  if(!p.pagesFound.length) lines.push('(none)');
+  p.pagesFound.forEach(pg=>{
+    lines.push(`- ${pg.url}`);
+    lines.push(`  Title: ${pg.pageTitle||'(none)'}`);
+    lines.push(`  Domain: ${pg.domain||'(unknown)'}`);
+    lines.push(`  Domain registered: ${pg.domainRegisteredDate||'(unavailable)'}`);
+  });
+  lines.push('');
+
+  lines.push('=== YOUR SUBMITTED TEXT (VERBATIM) ===');
+  lines.push(p.submittedTextExcerpt||'(none provided)');
+
+  return lines.join('\n');
+}
+
+async function generateEvidencePacket(){
+  if(!S.isPro()){openPW();return;}
+
+  if(!curReverseSearch||!Array.isArray(curReverseSearch.results)||!curReverseSearch.results.length){
+    toast('⚠️ No matches to compile');
+    return;
+  }
+
+  const bio=document.getElementById('bio').value.trim();
+  const msgs=document.getElementById('msgs').value.trim();
+  const submittedText=[bio,msgs].filter(Boolean).join('\n\n');
+
+  document.getElementById('evidencePacketModal').classList.add('on');
+  const body=document.getElementById('evidencePacketBody');
+  body.innerHTML=EVIDENCE_DISCLAIMER_HTML+`<div class="ev-loading">📋 Compiling evidence…</div>`;
+
+  try{
+    const resp=await fetch('/api/evidence-packet',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({userId:getUid(),reverseSearchData:curReverseSearch.results,submittedText})
+    });
+    const data=await resp.json();
+
+    if(!resp.ok){
+      closeEvidencePacketModal();
+      toast(data.error==='pro_required'?'⚠️ Upgrade to Pro for Evidence Packets':'⚠️ Evidence Packet is unavailable right now');
+      return;
+    }
+
+    curEvidencePacket=data;
+    body.innerHTML=EVIDENCE_DISCLAIMER_HTML+evidencePacketBodyHTML(data);
+  }catch(e){
+    // Bonus feature -- a failure here must never touch the main results
+    // page, which has already fully rendered by the time this is called.
+    console.error('evidence-packet error:',e);
+    closeEvidencePacketModal();
+    toast('⚠️ Evidence Packet is unavailable right now');
+  }
+}
+
+function closeEvidencePacketModal(){
+  document.getElementById('evidencePacketModal').classList.remove('on');
+}
+
+async function copyEvidencePacket(){
+  if(!curEvidencePacket) return;
+  try{
+    await navigator.clipboard.writeText(buildEvidencePacketPlainText(curEvidencePacket));
+    toast('✅ Copied to clipboard');
+  }catch(e){
+    console.error('clipboard copy error:',e);
+    toast('⚠️ Could not copy — try selecting the text manually');
+  }
 }
 
 function showResults(r){
