@@ -132,6 +132,76 @@ test('profile tool: rejects an empty submission (no bio, no images) before reach
   assert.equal(res.statusCode, 400);
 });
 
+// ════════════════════ reverse image search evidence (client-forwarded) ══
+// reverseSearchNote is raw material the client forwards from its own
+// /api/reverse-search call (domain names + match counts only) -- this
+// endpoint folds it into the prompt text, same as domainInfo does for
+// Email Check. It's never a system-prompt override: PROFILE_SYSTEM itself
+// is unaffected by what's sent here (only the user-content profileInfo
+// block changes), and the existing `system` field rejection above still
+// applies to this same request unchanged.
+
+test('reverseSearchNote is prepended into the profile content sent to Anthropic when present', async (t) => {
+  stubSupabaseAllowed(t);
+  let capturedBody;
+  stubAnthropicFetch(t, async (_url, opts) => {
+    capturedBody = JSON.parse(opts.body);
+    return { ok: true, json: async () => ({ content: [{ text: '{}' }] }) };
+  });
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({
+    method: 'POST',
+    body: {
+      tool: 'profile',
+      userId: VALID_UID,
+      bio: 'A real bio',
+      images: ['fakeb64'],
+      reverseSearchNote: 'Photo 1: found on 3 other pages online, including instagram.com, pinterest.com'
+    }
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  const text = capturedBody.messages[0].content.at(-1).text;
+  assert.match(text, /Reverse Image Search Results:/);
+  assert.match(text, /Photo 1: found on 3 other pages online, including instagram\.com, pinterest\.com/);
+  // Still precedes the rest of the existing profile fields, not replacing them.
+  assert.match(text, /Bio: A real bio/);
+});
+
+test('an empty/missing reverseSearchNote adds no "Reverse Image Search Results" section at all', async (t) => {
+  stubSupabaseAllowed(t);
+  let capturedBody;
+  stubAnthropicFetch(t, async (_url, opts) => {
+    capturedBody = JSON.parse(opts.body);
+    return { ok: true, json: async () => ({ content: [{ text: '{}' }] }) };
+  });
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', body: { tool: 'profile', userId: VALID_UID, bio: 'x', reverseSearchNote: '' } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.doesNotMatch(capturedBody.messages[0].content.at(-1).text, /Reverse Image Search Results/);
+});
+
+test('a non-string reverseSearchNote is ignored rather than crashing the request', async (t) => {
+  stubSupabaseAllowed(t);
+  stubAnthropicFetch(t);
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', body: { tool: 'profile', userId: VALID_UID, bio: 'x', reverseSearchNote: { not: 'a string' } } }, res);
+  assert.equal(res.statusCode, 200);
+});
+
+test('PROFILE_SYSTEM instructs the model to fold reverse-search evidence into Image Authenticity, framed probabilistically', async () => {
+  const { PROFILE_SYSTEM } = await loadHandler();
+  assert.match(PROFILE_SYSTEM, /REVERSE IMAGE SEARCH EVIDENCE/);
+  assert.match(PROFILE_SYSTEM, /Image Authenticity/);
+  assert.match(PROFILE_SYSTEM, /not proof/i);
+});
+
 test('email tool: server builds the exact EMAIL_SYSTEM prompt from raw fields alone', async (t) => {
   stubSupabaseAllowed(t);
   let capturedBody;
