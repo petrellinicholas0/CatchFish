@@ -554,3 +554,80 @@ test('concurrency cap: an acquire_request_slot RPC error fails closed (500), nev
   assert.equal(res.statusCode, 500);
   assert.equal(fetchMock.mock.callCount(), 0);
 });
+
+// ════════════════════ Anthropic call timeout (Paper Check 504 fix) ══════
+// Vercel Function logs showed Paper Check timing out at ~30.9s with a 504
+// and "DOMException [AbortError]: This operation was aborted" -- Paper
+// Check sends more input and requests a longer, more structured JSON
+// report than profile/email, routinely pushing generation past the old
+// hardcoded 30s abort. That 30s value (now ANTHROPIC_TIMEOUT_MS) was the
+// direct cause -- not the Vercel platform's own function ceiling, which
+// wasn't configured at all before this fix (no `export const config`
+// existed) and therefore was never what these 504s were hitting. Raised
+// to 55s, leaving Vercel's newly-configured 60s maxDuration a few
+// seconds of buffer to still deliver our own clean, application-level 504
+// JSON if a request is ever slow enough to hit even the new ceiling.
+//
+// Anthropic's real API isn't reachable here (no ANTHROPIC_API_KEY in this
+// environment), so these use Node's fake timers to prove the mechanism
+// itself: a response that would have tripped the OLD 30s ceiling now
+// succeeds, and the ceiling still exists (just higher) rather than having
+// been accidentally removed.
+
+function makeAbortAwareFetch(delayMs) {
+  return (_url, opts) => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve({ ok: true, json: async () => ({ content: [{ text: '{}' }] }) }), delayMs);
+    opts.signal.addEventListener('abort', () => {
+      clearTimeout(timer);
+      const err = new Error('The operation was aborted');
+      err.name = 'AbortError';
+      reject(err);
+    });
+  });
+}
+
+test('config export: maxDuration is set to 60, the Hobby-plan ceiling', async () => {
+  const { config } = await loadHandler();
+  assert.deepEqual(config, { maxDuration: 60 });
+});
+
+test('Anthropic timeout: a response finishing at ~32s (past the OLD 30s ceiling) now succeeds under the new 55s one', async (t) => {
+  const state = stubConcurrency(t);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  t.mock.method(globalThis, 'fetch', makeAbortAwareFetch(32000));
+
+  const { default: handler, ANTHROPIC_TIMEOUT_MS } = await loadHandler();
+  assert.equal(ANTHROPIC_TIMEOUT_MS, 55000, 'sanity check on the constant this test exercises');
+
+  const res = mockRes();
+  const promise = handler({ method: 'POST', body: { tool: 'paper', userId: VALID_UID, paperText: 'x'.repeat(5000) } }, res);
+
+  // Let the handler's earlier real (unmocked) awaits -- the usage check
+  // and the concurrency-slot acquire -- actually resolve and reach the
+  // fetch() call (which is what registers both its own setTimeout and the
+  // handler's abort setTimeout) before advancing the fake clock.
+  await new Promise((resolve) => setImmediate(resolve));
+  await t.mock.timers.tick(32000);
+  await promise;
+
+  assert.equal(res.statusCode, 200, 'a ~32s response must now succeed -- the old 30s ceiling would have aborted this');
+  assert.equal(state.releaseCalls.length, 1);
+});
+
+test('Anthropic timeout: a response slower than the new 55s ceiling still aborts with 504 -- raised, not removed', async (t) => {
+  const state = stubConcurrency(t);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  t.mock.method(globalThis, 'fetch', makeAbortAwareFetch(56000));
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  const promise = handler({ method: 'POST', body: { tool: 'paper', userId: VALID_UID, paperText: 'x'.repeat(5000) } }, res);
+
+  await new Promise((resolve) => setImmediate(resolve));
+  await t.mock.timers.tick(55000);
+  await promise;
+
+  assert.equal(res.statusCode, 504);
+  assert.match(res.body.error, /timed out/i);
+  assert.equal(state.releaseCalls.length, 1, 'the slot must still be released on this timeout');
+});
