@@ -156,6 +156,8 @@ CRITICAL RULE: Never state a definitive conclusion. Never say things like "this 
 
 MULTIPLE PHOTOS: If more than one photo is provided, cross-reference them for consistency: whether it's plausibly the same person across all photos, whether apparent age is consistent, whether photo quality/lighting/style is consistent (a mix of professional-looking photos and low-quality selfies can itself be a scam indicator), and — where visible — whether background/location details are consistent with one person's life. Summarize these cross-photo findings, framed as likelihood, in the "Image Authenticity" check, and explicitly note that multiple photos were cross-referenced. If only one photo is provided, explicitly note in the "Image Authenticity" check that cross-photo consistency could not be verified since only a single photo was given — never claim consistency or inconsistency across photos that don't exist. If no photo is provided, mark that check "skip".
 
+REVERSE IMAGE SEARCH EVIDENCE: If reverse image search results are provided below, they show whether copies of an uploaded photo were found elsewhere online — this detects stolen/reused real photos, a separate concern from AI-generated ones. This is evidence, not proof, either way: 0 matches just means it wasn't found in the search index (many stolen photos aren't indexed, especially first-time reposts), and matches could be a mirror, a legitimate repost by the same person, or genuinely stolen. Fold this evidence directly into the "Image Authenticity" check's likelihood assessment and detail text, phrased the same way as everything else here — "photo found on N other pages" as an indicator, never "this photo is stolen" as a fact.
+
 Return ONLY valid JSON with this exact structure — no markdown, no extra text:
 {
   "score": <integer 0-100, 100=very likely real>,
@@ -291,9 +293,16 @@ function buildProfileContent(body) {
   const plat = typeof body.plat === 'string' ? body.plat.trim() : '';
   const msgs = typeof body.msgs === 'string' ? body.msgs.trim() : '';
   const images = Array.isArray(body.images) ? body.images.filter((x) => typeof x === 'string') : [];
+  // Client-computed summary of /api/reverse-search results (domains +
+  // match counts only, never scraped page content) -- raw material the
+  // client forwards for this endpoint to fold into the prompt itself,
+  // same pattern as domainInfo in buildEmailContent below. Bounded
+  // defensively; in normal use this is always a short, client-built
+  // string derived from a handful of domain names.
+  const reverseSearchNote = typeof body.reverseSearchNote === 'string' ? body.reverseSearchNote.trim().slice(0, 2000) : '';
 
   const profileInfo = `
-Platform: ${plat || 'Unknown'}
+${reverseSearchNote ? `Reverse Image Search Results:\n${reverseSearchNote}\n` : ''}Platform: ${plat || 'Unknown'}
 Age: ${age || 'Not given'}
 Location: ${loc || 'Not given'}
 Occupation: ${job || 'Not given'}

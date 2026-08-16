@@ -156,6 +156,13 @@ h1,h2,h3,h4{font-weight:900;letter-spacing:-0.03em;line-height:1.1}
 }
 .ph-title{font-size:26px;font-weight:900}
 .ph-sub{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-top:3px;letter-spacing:0.06em}
+.ph-badge{
+  display:inline-flex;align-items:center;gap:5px;
+  font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.04em;
+  color:var(--teal);background:var(--teal-lt);
+  padding:5px 10px;border-radius:100px;
+  margin-top:9px;
+}
 
 /* ─── COLOR-BLOCKED HERO HEADER (mascot-bearing variant of .ph) ─────────────────────────────── */
 /* The mascot image is sized/positioned to stay fully inside this box (never
@@ -855,7 +862,8 @@ textarea{min-height:84px;line-height:1.55}
   <h1 class="ob-title">Catch<span>Fish</span></h1>
   <p class="ob-sub">Don't get catfished.<br>AI-powered dating profile detector.<br>Spots fakes, scammers & AI photos.</p>
   <div class="ob-feats">
-    <div class="ob-feat"><span class="ob-feat-icon">🤖</span><div><h4>AI Photo Detection</h4><p>Spots AI-generated & stolen photos</p></div></div>
+    <div class="ob-feat"><span class="ob-feat-icon">🤖</span><div><h4>AI Photo Detection</h4><p>Spots AI-generated photos</p></div></div>
+    <div class="ob-feat"><span class="ob-feat-icon">🔎</span><div><h4>Stolen Photo Detection</h4><p>Reverse image search finds real photos stolen from someone else</p></div></div>
     <div class="ob-feat"><span class="ob-feat-icon">🚩</span><div><h4>Scam Recognition</h4><p>Identifies romance scam patterns & bots</p></div></div>
     <div class="ob-feat"><span class="ob-feat-icon">📊</span><div><h4>Trust Score</h4><p>0–100 authenticity score with breakdown</p></div></div>
     <div class="ob-feat"><span class="ob-feat-icon">🔒</span><div><h4>Private Results</h4><p>Your analyses stay on your device — never shared</p></div></div>
@@ -973,6 +981,7 @@ textarea{min-height:84px;line-height:1.55}
   <div class="ph">
     <div class="ph-title">CatchFish 🎣</div>
     <div class="ph-sub">3 tools to catch scams before they catch you</div>
+    <div class="ph-badge">🔎 Also checks if photos are stolen from someone else</div>
   </div>
   <div class="sb sb-top">
 
@@ -1825,6 +1834,52 @@ function updateUsageUI(){
 
 // ════════════════════ ANALYSIS
 let curResult=null;
+let curReverseSearch=null;
+
+// Reverse image search runs automatically as part of Profile Analyzer --
+// not a separate button -- since its findings feed directly into the AI's
+// Image Authenticity assessment. Gated entirely independently of
+// check_and_increment_usage / the free-analysis counter (see
+// api/reverse-search.js + supabase/migrations/0009_...): any denial or
+// failure here only skips reverse search for this run, it never blocks
+// the overall analysis. Returns {note, results, skipReason} -- `note` is
+// the plain-language summary to fold into the prompt, `results` and
+// `skipReason` are for showResults() to render in the UI.
+async function runReverseSearch(){
+  if(!imgB64Arr.length) return {note:'',results:null,skipReason:null};
+  try{
+    const resp=await fetch('/api/reverse-search',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({images:imgB64Arr,userId:getUid()})
+    });
+    const data=await resp.json();
+
+    if(resp.status===403){
+      return {note:'',results:null,skipReason:data.reason||'free_limit_reached'};
+    }
+    if(!resp.ok||!Array.isArray(data.results)){
+      return {note:'',results:null,skipReason:null};
+    }
+
+    const lines=[];
+    data.results.forEach((r,i)=>{
+      if(r.matchCount>0){
+        const domains=(r.pages||[]).map(p=>p.url).filter(Boolean).slice(0,3);
+        lines.push(`Photo ${i+1}: found on ${r.matchCount} other page${r.matchCount===1?'':'s'} online${domains.length?', including '+domains.join(', '):''}`);
+      }
+    });
+
+    return {note:lines.join('\n'),results:data.results,skipReason:null};
+  }catch(e){
+    // Reverse search is a bonus signal, never a blocker -- any failure
+    // here (network, timeout, unexpected shape) just means no reverse-
+    // search evidence for this run.
+    console.error('reverse-search error:',e);
+    return {note:'',results:null,skipReason:null};
+  }
+}
+
 async function runAnalysis(){
   const bio=document.getElementById('bio').value.trim();
   const msgs=document.getElementById('msgs').value.trim();
@@ -1854,6 +1909,9 @@ async function runAnalysis(){
   const job=document.getElementById('job').value.trim();
   const plat=document.getElementById('plat').value.trim();
 
+  const reverseSearch=await runReverseSearch();
+  curReverseSearch=reverseSearch;
+
   try{
     // The system prompt (including the minor-protection/age-safety rule)
     // is built entirely server-side now — this used to be constructed
@@ -1861,6 +1919,10 @@ async function runAnalysis(){
     // calling /api/analyze directly could supply their own prompt and
     // strip every safety instruction. The client now sends only the raw
     // fields; see api/analyze.js's PROFILE_SYSTEM and buildProfileContent().
+    // reverseSearch.note (if any) is client-computed domain/match-count
+    // evidence, not an instruction -- api/analyze.js's buildProfileContent()
+    // folds it into the prompt text itself, same as domainInfo for Email
+    // Check.
     const resp=await fetch('/api/analyze',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
@@ -1868,7 +1930,8 @@ async function runAnalysis(){
         tool:'profile',
         userId:getUid(),
         bio,age,loc,job,plat,msgs,
-        images:imgB64Arr
+        images:imgB64Arr,
+        reverseSearchNote:reverseSearch.note
       })
     });
 
@@ -2303,6 +2366,30 @@ function showBlockedMessage(message){
   nav('results');
 }
 
+// Raw reverse-search match list (domain names + counts only, never
+// scraped page content) rendered directly under the Image Authenticity
+// check row, independent of the AI's own summary of the same evidence --
+// so the user can verify it themselves. Also covers the two gated-skip
+// states from api/reverse-search.js's 403 responses.
+function reverseSearchDetailHTML(rs){
+  if(!rs) return '';
+  if(rs.skipReason==='pro_daily_limit_reached'){
+    return `<div class="check-detail" style="margin-top:6px;color:var(--muted2)">🔎 Reverse image search unavailable today (daily limit reached) — AI authenticity check still ran.</div>`;
+  }
+  if(rs.skipReason==='free_limit_reached'){
+    return `<div class="check-detail" style="margin-top:6px;color:var(--muted2)">🔎 Reverse image search is a one-time free feature — <a href="#" onclick="openPW();return false" style="color:var(--coral)">upgrade for unlimited use</a></div>`;
+  }
+  if(rs.results&&rs.results.some(x=>x.matchCount>0)){
+    const lines=rs.results.map((x,i)=>{
+      if(!x.matchCount) return '';
+      const domains=(x.pages||[]).map(p=>esc(p.url)).filter(Boolean).slice(0,5);
+      return `🔎 Photo ${i+1}: found on ${x.matchCount} other page${x.matchCount===1?'':'s'}${domains.length?' — '+domains.join(', '):''}`;
+    }).filter(Boolean).join('<br>');
+    return `<div class="check-detail" style="margin-top:6px">${lines}</div>`;
+  }
+  return '';
+}
+
 function showResults(r){
   const t=tier(r.score);
   const icons={pass:'✅',warn:'⚠️',fail:'❌',skip:'➖'};
@@ -2313,6 +2400,7 @@ function showResults(r){
       <div class="check-info">
         <div class="check-name">${esc(c.name)}</div>
         <div class="check-detail">${esc(c.detail)}</div>
+        ${c.name==='Image Authenticity'?reverseSearchDetailHTML(curReverseSearch):''}
       </div>
       <span class="check-pill ${esc(c.status)}">${esc((c.status||'').toUpperCase())}</span>
     </div>`).join('');
