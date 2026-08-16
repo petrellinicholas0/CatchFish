@@ -1048,6 +1048,7 @@ textarea{min-height:84px;line-height:1.55}
       </div>
       <div class="cb">
         <div class="photo-grid" id="photoGrid"></div>
+        <button class="btn-g" id="ocrBtn" style="display:none;margin-bottom:12px" onclick="extractTextFromPhotos()">📋 Extract Text From Photos</button>
         <div class="upload-zone" id="upZone">
           <input type="file" id="imgIn" accept="image/*" multiple>
           <span class="upload-zone-icon">📷</span>
@@ -1759,11 +1760,51 @@ function renderPhotoGrid(){
       <button class="prev-clear" onclick="clearImg(${i})">✕</button>
     </div>`).join('');
   upZone.style.display=imgB64Arr.length>=MAX_PHOTOS?'none':'block';
+  document.getElementById('ocrBtn').style.display=imgB64Arr.length>0?'block':'none';
 }
 
 function clearImg(i){
   imgB64Arr.splice(i,1);
   renderPhotoGrid();
+}
+
+// ════════════════════ OCR: EXTRACT TEXT FROM PHOTOS
+// Convenience feature only -- never touches S.usage()/check_and_increment_
+// usage/paywall logic. A pure client-side text-insertion helper: it only
+// ever reads imgB64Arr and writes to the Bio textarea, both already-owned
+// pieces of state, so it can't interfere with the analysis flow itself.
+async function extractTextFromPhotos(){
+  if(!imgB64Arr.length) return;
+  const btn=document.getElementById('ocrBtn');
+  const prevText=btn.textContent;
+  btn.disabled=true;
+  btn.textContent='Extracting...';
+
+  try{
+    const resp=await fetch('/api/ocr',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({images:imgB64Arr})
+    });
+    const data=await resp.json();
+    if(!resp.ok||data.error){throw new Error(data.error||('API error: '+resp.status));}
+
+    const extracted=(data.texts||[]).filter(t=>t&&t.trim()).join('\n\n').trim();
+    if(!extracted){
+      toast('⚠️ No text found in these photos');
+      return;
+    }
+
+    const bioEl=document.getElementById('bio');
+    bioEl.value=bioEl.value.trim()?bioEl.value.trim()+'\n\n'+extracted:extracted;
+    toast('✅ Text extracted — review before analyzing');
+  }catch(e){
+    toast('❌ Couldn\'t extract text — try typing it manually');
+    console.error(e);
+  }finally{
+    btn.disabled=false;
+    btn.textContent=prevText;
+  }
 }
 
 // ════════════════════ USAGE UI
