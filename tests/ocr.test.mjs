@@ -1,7 +1,7 @@
 // Run with: node --experimental-test-module-mocks --test tests/*.test.mjs
 // (also wired up as `npm test`)
 //
-// Covers the new /api/ocr endpoint -- extracts visible text from uploaded
+// Covers the /api/ocr endpoint -- extracts visible text from uploaded
 // photos via Google Cloud Vision API's TEXT_DETECTION, so a user who
 // screenshots a dating profile doesn't have to manually retype the bio.
 // This is a convenience feature only: it never calls check_and_increment_
@@ -9,6 +9,15 @@
 // Supabase mock anywhere in this file -- if the handler ever reached for
 // Supabase, that would itself be a regression worth catching, and the
 // absence of any such stub here is part of what proves it doesn't.
+//
+// Security review finding: this endpoint used to accept {images} from
+// anyone, with no userId and no rate limiting at all -- an uncapped,
+// unauthenticated relay to a paid Vision API call. It now requires a
+// UUID-shaped userId on every request (same UUID_RE pattern used
+// everywhere else in the API surface) and enforces the same IP-based rate
+// limit api/analyze.js already uses as a baseline defense-in-depth layer.
+// It is still deliberately NOT gated by any per-user daily-cap RPC -- the
+// plain "Extract Text From Photos" button must keep working ungated.
 //
 // Every fetch mock is registered via the per-test `t.mock` tracker so
 // it's always restored, pass or fail.
@@ -33,12 +42,26 @@ async function loadHandler() {
 
 const withKey = () => { process.env.GOOGLE_VISION_API_KEY = 'test-vision-key'; };
 
+const VALID_UID = '11111111-1111-4111-8111-111111111111';
+
+test('rejects missing/invalid userId before ever calling Vision', async (t) => {
+  withKey();
+  const fetchMock = stubVisionFetch(t, async () => { throw new Error('Vision API should never be called'); });
+  const { default: handler } = await loadHandler();
+  for (const userId of [undefined, '', 'not-a-uuid', 123]) {
+    const res = mockRes();
+    await handler({ method: 'POST', body: { userId, images: ['img-a'] } }, res);
+    assert.equal(res.statusCode, 400, `userId=${JSON.stringify(userId)} should be rejected`);
+  }
+  assert.equal(fetchMock.mock.callCount(), 0);
+});
+
 test('rejects missing images field', async (t) => {
   withKey();
   const fetchMock = stubVisionFetch(t, async () => { throw new Error('Vision API should never be called'); });
   const { default: handler } = await loadHandler();
   const res = mockRes();
-  await handler({ method: 'POST', body: {} }, res);
+  await handler({ method: 'POST', body: { userId: VALID_UID } }, res);
   assert.equal(res.statusCode, 400);
   assert.equal(fetchMock.mock.callCount(), 0);
 });
@@ -50,7 +73,7 @@ test('rejects a non-array images value without crashing (a short string has no .
 
   for (const images of ['abc', {}, 42, true]) {
     const res = mockRes();
-    await handler({ method: 'POST', body: { images } }, res);
+    await handler({ method: 'POST', body: { userId: VALID_UID, images } }, res);
     assert.equal(res.statusCode, 400, `images=${JSON.stringify(images)} should be rejected with 400, not crash`);
     assert.equal(res.body.error, 'Missing or empty images array');
   }
@@ -62,7 +85,7 @@ test('rejects an empty images array', async (t) => {
   stubVisionFetch(t, async () => { throw new Error('Vision API should never be called'); });
   const { default: handler } = await loadHandler();
   const res = mockRes();
-  await handler({ method: 'POST', body: { images: [] } }, res);
+  await handler({ method: 'POST', body: { userId: VALID_UID, images: [] } }, res);
   assert.equal(res.statusCode, 400);
 });
 
@@ -71,7 +94,7 @@ test('rejects more than 6 images (mirrors MAX_PHOTOS independent of the client)'
   const fetchMock = stubVisionFetch(t, async () => { throw new Error('Vision API should never be called'); });
   const { default: handler } = await loadHandler();
   const res = mockRes();
-  await handler({ method: 'POST', body: { images: Array.from({ length: 7 }, (_, i) => `img${i}`) } }, res);
+  await handler({ method: 'POST', body: { userId: VALID_UID, images: Array.from({ length: 7 }, (_, i) => `img${i}`) } }, res);
   assert.equal(res.statusCode, 400);
   assert.match(res.body.error, /6/);
   assert.equal(fetchMock.mock.callCount(), 0);
@@ -85,7 +108,7 @@ test('accepts exactly 6 images', async (t) => {
   }));
   const { default: handler } = await loadHandler();
   const res = mockRes();
-  await handler({ method: 'POST', body: { images: Array.from({ length: 6 }, (_, i) => `img${i}`) } }, res);
+  await handler({ method: 'POST', body: { userId: VALID_UID, images: Array.from({ length: 6 }, (_, i) => `img${i}`) } }, res);
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.texts.length, 6);
 });
@@ -97,7 +120,7 @@ test('rejects an images array containing a non-string or empty-string entry', as
 
   for (const images of [['valid', 123], ['valid', ''], [null], [undefined]]) {
     const res = mockRes();
-    await handler({ method: 'POST', body: { images } }, res);
+    await handler({ method: 'POST', body: { userId: VALID_UID, images } }, res);
     assert.equal(res.statusCode, 400, `images=${JSON.stringify(images)} should be rejected`);
   }
   assert.equal(fetchMock.mock.callCount(), 0);
@@ -118,7 +141,7 @@ test('batches all images into a single Vision API request, not one call per imag
 
   const { default: handler } = await loadHandler();
   const res = mockRes();
-  await handler({ method: 'POST', body: { images: ['img-a', 'img-b', 'img-c'] } }, res);
+  await handler({ method: 'POST', body: { userId: VALID_UID, images: ['img-a', 'img-b', 'img-c'] } }, res);
 
   assert.equal(res.statusCode, 200);
   assert.equal(callCount, 1, 'must batch into a single HTTP call, not one per image');
@@ -139,7 +162,7 @@ test('uses the API key as a query-string param, not an x-api-key header (unlike 
 
   const { default: handler } = await loadHandler();
   const res = mockRes();
-  await handler({ method: 'POST', body: { images: ['img-a'] } }, res);
+  await handler({ method: 'POST', body: { userId: VALID_UID, images: ['img-a'] } }, res);
 
   assert.equal(res.statusCode, 200);
   assert.match(capturedUrl, /^https:\/\/vision\.googleapis\.com\/v1\/images:annotate\?key=test-vision-key$/);
@@ -160,7 +183,7 @@ test('extracts fullTextAnnotation.text per image, preserving input order', async
 
   const { default: handler } = await loadHandler();
   const res = mockRes();
-  await handler({ method: 'POST', body: { images: ['img-a', 'img-b'] } }, res);
+  await handler({ method: 'POST', body: { userId: VALID_UID, images: ['img-a', 'img-b'] } }, res);
 
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body.texts, ['first image text', 'second image text']);
@@ -181,7 +204,7 @@ test('an image with no detected text contributes an empty string, not an error, 
 
   const { default: handler } = await loadHandler();
   const res = mockRes();
-  await handler({ method: 'POST', body: { images: ['img-a', 'img-b', 'img-c'] } }, res);
+  await handler({ method: 'POST', body: { userId: VALID_UID, images: ['img-a', 'img-b', 'img-c'] } }, res);
 
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body.texts, ['has text', '', '']);
@@ -201,7 +224,7 @@ test('a per-image Vision error contributes an empty string rather than failing t
 
   const { default: handler } = await loadHandler();
   const res = mockRes();
-  await handler({ method: 'POST', body: { images: ['img-a', 'img-b'] } }, res);
+  await handler({ method: 'POST', body: { userId: VALID_UID, images: ['img-a', 'img-b'] } }, res);
 
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body.texts, ['fine', '']);
@@ -213,7 +236,7 @@ test('missing GOOGLE_VISION_API_KEY degrades gracefully (500, no crash, no key l
 
   const { default: handler } = await loadHandler();
   const res = mockRes();
-  await handler({ method: 'POST', body: { images: ['img-a'] } }, res);
+  await handler({ method: 'POST', body: { userId: VALID_UID, images: ['img-a'] } }, res);
 
   assert.equal(res.statusCode, 500);
   assert.equal(res.body.error, 'Server error. Please try again.');
@@ -232,7 +255,7 @@ test('a Vision API-level error response (bad key, quota) is a clean 500, no cras
 
   const { default: handler } = await loadHandler();
   const res = mockRes();
-  await handler({ method: 'POST', body: { images: ['img-a'] } }, res);
+  await handler({ method: 'POST', body: { userId: VALID_UID, images: ['img-a'] } }, res);
 
   assert.equal(res.statusCode, 500);
   assert.doesNotMatch(res.body.error, /API key not valid/, 'must not leak the raw Vision error to the client');
@@ -244,7 +267,7 @@ test('a network-level fetch failure (thrown error) is a clean 500, no crash', as
 
   const { default: handler } = await loadHandler();
   const res = mockRes();
-  await handler({ method: 'POST', body: { images: ['img-a'] } }, res);
+  await handler({ method: 'POST', body: { userId: VALID_UID, images: ['img-a'] } }, res);
 
   assert.equal(res.statusCode, 500);
   assert.equal(res.body.error, 'Server error. Please try again.');
@@ -260,7 +283,7 @@ test('a timeout (AbortError) is a clean 504, not a crash', async (t) => {
 
   const { default: handler } = await loadHandler();
   const res = mockRes();
-  await handler({ method: 'POST', body: { images: ['img-a'] } }, res);
+  await handler({ method: 'POST', body: { userId: VALID_UID, images: ['img-a'] } }, res);
 
   assert.equal(res.statusCode, 504);
   assert.match(res.body.error, /timed out/i);
@@ -270,6 +293,71 @@ test('rejects non-POST methods', async (t) => {
   withKey();
   const { default: handler } = await loadHandler();
   const res = mockRes();
-  await handler({ method: 'GET', body: { images: ['img-a'] } }, res);
+  await handler({ method: 'GET', body: { userId: VALID_UID, images: ['img-a'] } }, res);
   assert.equal(res.statusCode, 405);
+});
+
+// ════════════════════ IP-based rate limiting (baseline defense) ═════════
+// This endpoint has no per-userId gating RPC at all, so the IP-based
+// throttle is the only thing standing between it and an unlimited script
+// that mints a fresh userId per request. Same threshold/window as
+// api/analyze.js's own checkIpRateLimit.
+
+test('IP rate limit: many requests from the same IP with different fresh userIds get rate-limited once the threshold is hit', async (t) => {
+  withKey();
+  stubVisionFetch(t, async () => ({ ok: true, json: async () => ({ responses: [{ fullTextAnnotation: { text: 'x' } }] }) }));
+
+  // One handler instance for this whole test, so its module-level
+  // in-memory rate-limit counter persists across every call below.
+  const { default: handler } = await loadHandler();
+  const sameIp = '203.0.113.77';
+  const statuses = [];
+
+  for (let i = 0; i < 12; i++) {
+    const res = mockRes();
+    await handler({
+      method: 'POST',
+      headers: { 'x-forwarded-for': sameIp },
+      body: { userId: crypto.randomUUID(), images: ['img-a'] }
+    }, res);
+    statuses.push(res.statusCode);
+  }
+
+  const allowedCount = statuses.filter((s) => s === 200).length;
+  const limitedCount = statuses.filter((s) => s === 429).length;
+
+  assert.equal(allowedCount, 10, `expected exactly 10 allowed (IP_RATE_LIMIT), got statuses: ${statuses}`);
+  assert.equal(limitedCount, 2, `expected the last 2 of 12 to be 429-rate-limited, got statuses: ${statuses}`);
+  assert.deepEqual(statuses.slice(0, 10), Array(10).fill(200));
+  assert.deepEqual(statuses.slice(10), [429, 429]);
+});
+
+test('IP rate limit: a different IP is unaffected by another IP already being at its limit', async (t) => {
+  withKey();
+  stubVisionFetch(t, async () => ({ ok: true, json: async () => ({ responses: [{ fullTextAnnotation: { text: 'x' } }] }) }));
+
+  const { default: handler } = await loadHandler();
+
+  for (let i = 0; i < 10; i++) {
+    const res = mockRes();
+    await handler({ method: 'POST', headers: { 'x-forwarded-for': '203.0.113.88' }, body: { userId: crypto.randomUUID(), images: ['img-a'] } }, res);
+    assert.equal(res.statusCode, 200);
+  }
+  const exhausted = mockRes();
+  await handler({ method: 'POST', headers: { 'x-forwarded-for': '203.0.113.88' }, body: { userId: crypto.randomUUID(), images: ['img-a'] } }, exhausted);
+  assert.equal(exhausted.statusCode, 429);
+
+  const otherIp = mockRes();
+  await handler({ method: 'POST', headers: { 'x-forwarded-for': '198.51.100.42' }, body: { userId: crypto.randomUUID(), images: ['img-a'] } }, otherIp);
+  assert.equal(otherIp.statusCode, 200, 'a different IP must not be affected by another IP being rate-limited');
+});
+
+test('IP rate limit: missing x-forwarded-for fails open rather than blocking every request', async (t) => {
+  withKey();
+  stubVisionFetch(t, async () => ({ ok: true, json: async () => ({ responses: [{ fullTextAnnotation: { text: 'x' } }] }) }));
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', headers: {}, body: { userId: VALID_UID, images: ['img-a'] } }, res);
+  assert.equal(res.statusCode, 200);
 });

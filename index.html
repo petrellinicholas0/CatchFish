@@ -2069,7 +2069,7 @@ async function extractTextFromPhotos(){
     const resp=await fetch('/api/ocr',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({images:imgB64Arr})
+      body:JSON.stringify({userId:getUid(),images:imgB64Arr})
     });
     const data=await resp.json();
     if(!resp.ok||data.error){throw new Error(data.error||('API error: '+resp.status));}
@@ -2171,7 +2171,7 @@ async function importFromScreenshot(){
     const ocrResp=await fetch('/api/ocr',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({images:importB64Arr})
+      body:JSON.stringify({userId:getUid(),images:importB64Arr})
     });
     const ocrData=await ocrResp.json();
     if(!ocrResp.ok||ocrData.error){throw new Error(ocrData.error||('API error: '+ocrResp.status));}
