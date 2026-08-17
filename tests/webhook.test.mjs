@@ -182,6 +182,71 @@ test('single plan: an RPC error is logged but still returns 200 to Stripe (avoid
   assert.equal(res.statusCode, 200);
 });
 
+test('credits5 plan: grants exactly 5 credits via add_credits, never sets plan_status', async (t) => {
+  withEnv(t);
+  const updateCalls = [];
+  const rpcCalls = [];
+  stubStripe(t, checkoutCompletedEvent({ metadata: { userId: USER_ID, plan: 'credits5' } }));
+  stubSupabase(t, {
+    update: (table, data, col, val) => updateCalls.push({ table, data, col, val }),
+    rpc: (fn, args) => rpcCalls.push({ fn, args })
+  });
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler(mockReq({}), res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(updateCalls.length, 0, 'credit-pack purchases must never write plan_status directly');
+  assert.equal(rpcCalls.length, 1);
+  assert.equal(rpcCalls[0].fn, 'add_credits');
+  assert.equal(rpcCalls[0].args.p_user_id, USER_ID);
+  assert.equal(rpcCalls[0].args.p_amount, 5);
+  assert.equal(rpcCalls[0].args.p_stripe_customer_id, 'cus_test123');
+});
+
+test('credits15 plan: grants exactly 15 credits via add_credits, never sets plan_status', async (t) => {
+  withEnv(t);
+  const updateCalls = [];
+  const rpcCalls = [];
+  stubStripe(t, checkoutCompletedEvent({ metadata: { userId: USER_ID, plan: 'credits15' } }));
+  stubSupabase(t, {
+    update: (table, data, col, val) => updateCalls.push({ table, data, col, val }),
+    rpc: (fn, args) => rpcCalls.push({ fn, args })
+  });
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler(mockReq({}), res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(updateCalls.length, 0, 'credit-pack purchases must never write plan_status directly');
+  assert.equal(rpcCalls.length, 1);
+  assert.equal(rpcCalls[0].fn, 'add_credits');
+  assert.equal(rpcCalls[0].args.p_user_id, USER_ID);
+  assert.equal(rpcCalls[0].args.p_amount, 15);
+  assert.equal(rpcCalls[0].args.p_stripe_customer_id, 'cus_test123');
+});
+
+test('credit-pack plan: an add_credits RPC error is logged but still returns 200 to Stripe', async (t) => {
+  withEnv(t);
+  stubStripe(t, checkoutCompletedEvent({ metadata: { userId: USER_ID, plan: 'credits5' } }));
+  t.mock.module('../lib/supabaseAdmin.js', {
+    namedExports: {
+      getSupabaseAdmin: () => ({
+        from: () => ({ update: () => ({ eq: async () => ({ error: null }) }) }),
+        rpc: async () => ({ error: { message: 'boom' } })
+      })
+    }
+  });
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler(mockReq({}), res);
+
+  assert.equal(res.statusCode, 200);
+});
+
 test('unrecognized plan value: no update, no RPC — does not default to granting active status', async (t) => {
   withEnv(t);
   const updateCalls = [];
