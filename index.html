@@ -1009,6 +1009,30 @@ textarea{min-height:84px;line-height:1.55}
       </div>
     </div>
 
+    <!-- Universal, non-expiring credit packs -- usable on Profile
+         Analyzer, Email Check, OR Paper Check. Hidden inside the
+         installed (TWA/Play Billing) app: doUpgrade() routes purchases
+         through Google Play Billing there, which has no product SKU
+         registered for these packs yet (only catchfish_monthly/_annual/
+         _single exist in the Play Console) -- see openPW(). -->
+    <div id="creditsSection">
+      <div class="home-section" style="margin-top:16px">Buy Credits — Never Expire</div>
+      <div class="plan-opt" onclick="selPlan(this,'credits5')" id="planC5">
+        <div class="plan-radio"></div>
+        <div class="plan-info">
+          <div class="plan-name">5 Credits</div>
+          <div class="plan-price">$3.99 · Use on any tool · Never expires</div>
+        </div>
+      </div>
+      <div class="plan-opt" onclick="selPlan(this,'credits15')" id="planC15">
+        <div class="plan-radio"></div>
+        <div class="plan-info">
+          <div class="plan-name">15 Credits</div>
+          <div class="plan-price">$9.99 · Use on any tool · Never expires</div>
+        </div>
+      </div>
+    </div>
+
     <ul class="modal-feats">
       <li class="modal-feat">Unlimited profile analyses</li>
       <li class="modal-feat">Full AI image scan</li>
@@ -1821,6 +1845,7 @@ window.addEventListener('load',()=>{
   if(S.get('cf_ob',false)&&S.get('cf_age_confirmed',false)) document.getElementById('ob').classList.add('gone');
   checkDailyReset();
   updateUsageUI();
+  refreshCredits();
   renderHist();
   renderHomeRecent();
   renderStatCards();
@@ -1851,11 +1876,28 @@ window.addEventListener('load',()=>{
         }
       }
       if(verified){
-        S.set('cf_pro',true);
-        updateUsageUI();
-        document.getElementById('planLabel').textContent='Pro Plan 🎣';
-        document.getElementById('planSub').textContent='Unlimited analyses';
-        toast('✨ Welcome to CatchFish Pro!');
+        // Branch on which plan the session was actually for (from
+        // Stripe's own metadata, via /api/verify-checkout) rather than
+        // assuming any verified checkout means Pro -- 'single' and the
+        // two credit packs are one-time purchases that must never set
+        // cf_pro, matching api/webhook.js's own handling of the exact
+        // same plan values (grants credits via grant_single_purchase_
+        // credit/add_credits, never touches plan_status).
+        const purchasedPlan=data.plan;
+        if(purchasedPlan==='monthly'||purchasedPlan==='annual'){
+          S.set('cf_pro',true);
+          updateUsageUI();
+          document.getElementById('planLabel').textContent='Pro Plan 🎣';
+          document.getElementById('planSub').textContent='Unlimited analyses';
+          toast('✨ Welcome to CatchFish Pro!');
+        }else if(purchasedPlan==='single'||purchasedPlan==='credits5'||purchasedPlan==='credits15'){
+          // Refresh the real server-side balance rather than guessing
+          // locally how many credits were just added.
+          await refreshCredits();
+          toast('✅ Credits added to your account!');
+        }else{
+          toast('✅ Purchase confirmed!');
+        }
       }else{
         toast('⚠ Could not confirm your upgrade — contact support if you were charged.');
       }
@@ -2022,15 +2064,44 @@ function updateUsageUI(){
   const used=S.usage(), isPro=S.isPro();
   const strip=document.getElementById('uStrip');
   if(isPro){strip.style.display='none';return;}
+  strip.style.display='';
   const rem=Math.max(0,FREE_LIMIT-used);
   const pct=(rem/FREE_LIMIT)*100;
-  document.getElementById('uCount').textContent=`${rem} remaining today`;
+  // Universal, non-expiring credit-pack balance (see
+  // supabase/migrations/0010_add_universal_credit_packs.sql) -- display
+  // only, fetched via refreshCredits()/api/user-status.js; the real
+  // consumption/enforcement stays entirely server-side in
+  // check_and_increment_usage.
+  const credits=S.get('cf_credits',0);
+  document.getElementById('uCount').textContent=`${rem} free today${credits>0?` + ${credits} credit${credits===1?'':'s'}`:''}`;
   const fill=document.getElementById('uFill');
   fill.style.width=pct+'%';
   fill.className='usage-fill'+(pct===0?' d':pct<=34?' w':'');
   document.getElementById('uReset').textContent=rem>0?'Resets daily at midnight':msToReset();
   const upBtn=strip.querySelector('.btn-up');
   if(upBtn) upBtn.textContent=isInstalledApp()?'Upgrade via browser':'Upgrade';
+}
+
+// Fetches the current server-side `credits` balance for display in the
+// usage strip -- this is the ONLY channel index.html has for that number
+// (api/analyze.js never surfaced it), since check_and_increment_usage's
+// tier-3 consumption happens entirely server-side and the client has no
+// other way to know the current balance. Never used for enforcement,
+// only display -- a stale/failed fetch here just means the strip briefly
+// under- or over-states the count, it never grants or blocks anything.
+async function refreshCredits(){
+  try{
+    const resp=await fetch('/api/user-status',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({userId:getUid()})
+    });
+    const data=await resp.json();
+    if(resp.ok&&typeof data.credits==='number') S.set('cf_credits',data.credits);
+  }catch(e){
+    console.error('user-status error:',e);
+  }
+  updateUsageUI();
 }
 
 // ════════════════════ ANALYSIS
@@ -2161,7 +2232,7 @@ async function runAnalysis(){
     }
 
     // Update usage
-    if(!isPro){S.set('cf_usage',used+1);updateUsageUI();}
+    if(!isPro){S.set('cf_usage',used+1);updateUsageUI();refreshCredits();}
 
     // Save history
     const sets=S.settings();
@@ -2237,7 +2308,7 @@ async function runEmailAnalysis(){
     const raw=data.content.map(b=>b.text||'').join('');
     const result=JSON.parse(raw.replace(/```json|```/g,'').trim());
 
-    if(!isPro){S.set('cf_usage',used+1);updateUsageUI();}
+    if(!isPro){S.set('cf_usage',used+1);updateUsageUI();refreshCredits();}
 
     renderEmailResult(result,domainInfo);
     nav('email-result');
@@ -2311,7 +2382,7 @@ async function runPaperAnalysis(){
     const raw=data.content.map(b=>b.text||'').join('');
     const result=JSON.parse(raw.replace(/```json|```/g,'').trim());
 
-    if(!isPro){S.set('cf_usage',used+1);updateUsageUI();}
+    if(!isPro){S.set('cf_usage',used+1);updateUsageUI();refreshCredits();}
 
     renderPaperResult(result);
     nav('paper-result');
@@ -3117,6 +3188,13 @@ function openPW(){
   pwModal.classList.add('on');
   const continueBtn=pwModal.querySelector('.btn-p');
   if(continueBtn) continueBtn.textContent=isInstalledApp()?'Upgrade via browser':'Continue';
+  // Credit packs are web (Stripe) checkout only for now -- no Google Play
+  // Billing product SKU exists for them yet (only catchfish_monthly/
+  // _annual/_single are registered in the Play Console; see
+  // tryPlayBilling()'s productIdMap), so they're hidden inside the
+  // installed app rather than offering a purchase path that would fail.
+  const creditsSection=document.getElementById('creditsSection');
+  if(creditsSection) creditsSection.style.display=isInstalledApp()?'none':'';
 }
 function closePW(){document.getElementById('pwModal').classList.remove('on')}
 

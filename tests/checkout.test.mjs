@@ -182,3 +182,59 @@ test('plan lookup: an unrecognized plain-string plan is still rejected (unchange
   await handler({ method: 'POST', headers: {}, body: { plan: 'not-a-real-plan', userId: ATTACKER_ID, email: 'x@y.com' } }, res);
   assert.equal(res.statusCode, 400);
 });
+
+// ════════════════════ Universal credit packs (credits5 / credits15) ═════
+
+test('credits5 resolves to its live Stripe Price ID, mode:"payment", metadata.plan set correctly', async (t) => {
+  let capturedParams = null;
+  stubStripe(t, () => ({
+    checkout: { sessions: { create: async (params) => { capturedParams = params; return { url: 'https://checkout.stripe.com/real' }; } } }
+  }));
+  stubSupabase(t, () => ({ from: () => ({ upsert: async () => ({ error: null }) }) }));
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', headers: {}, body: { plan: 'credits5', userId: ATTACKER_ID, email: 'x@y.com' } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(capturedParams.line_items[0].price, 'price_1U5HlzPJRgYrBGozhHAkVeZw');
+  assert.equal(capturedParams.mode, 'payment', 'must be one-time, not a subscription');
+  assert.equal(capturedParams.metadata.plan, 'credits5');
+  // One-time purchases never get subscription_data -- there's no
+  // subscription object for Stripe to attach it to.
+  assert.equal(capturedParams.subscription_data, undefined);
+});
+
+test('credits15 resolves to its live Stripe Price ID, mode:"payment", metadata.plan set correctly', async (t) => {
+  let capturedParams = null;
+  stubStripe(t, () => ({
+    checkout: { sessions: { create: async (params) => { capturedParams = params; return { url: 'https://checkout.stripe.com/real' }; } } }
+  }));
+  stubSupabase(t, () => ({ from: () => ({ upsert: async () => ({ error: null }) }) }));
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', headers: {}, body: { plan: 'credits15', userId: ATTACKER_ID, email: 'x@y.com' } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(capturedParams.line_items[0].price, 'price_1U5Hm2PJRgYrBGozOH7KVurJ');
+  assert.equal(capturedParams.mode, 'payment', 'must be one-time, not a subscription');
+  assert.equal(capturedParams.metadata.plan, 'credits15');
+  assert.equal(capturedParams.subscription_data, undefined);
+});
+
+test('credits5/credits15 metadata.plan is clearly distinguishable from "single" (webhook branches on this)', async (t) => {
+  let capturedParams = null;
+  stubStripe(t, () => ({
+    checkout: { sessions: { create: async (params) => { capturedParams = params; return { url: 'https://checkout.stripe.com/real' }; } } }
+  }));
+  stubSupabase(t, () => ({ from: () => ({ upsert: async () => ({ error: null }) }) }));
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', headers: {}, body: { plan: 'credits5', userId: ATTACKER_ID, email: 'x@y.com' } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.notEqual(capturedParams.metadata.plan, 'single');
+  assert.equal(capturedParams.metadata.plan, 'credits5');
+});

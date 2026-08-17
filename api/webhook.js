@@ -73,6 +73,24 @@ export default async function handler(req, res) {
           if (creditError) {
             console.error('Failed to grant single-purchase credit:', creditError.message);
           }
+        } else if (plan === 'credits5' || plan === 'credits15') {
+          // Same one-time-purchase reasoning as 'single' immediately
+          // above — mode: 'payment', no subscription object, so
+          // plan_status must never change here. add_credits (see
+          // supabase/migrations/0010_add_universal_credit_packs.sql) adds
+          // to the SAME universal `credits` balance that
+          // grant_single_purchase_credit and check_and_increment_usage's
+          // tier-3 already use — these packs are not a separate credit
+          // system, just a bigger grant of the same thing.
+          const amount = plan === 'credits5' ? 5 : 15;
+          const { error: creditError } = await supabase.rpc('add_credits', {
+            p_user_id: userId,
+            p_amount: amount,
+            p_stripe_customer_id: session.customer
+          });
+          if (creditError) {
+            console.error(`Failed to add ${amount} credits:`, creditError.message);
+          }
         } else {
           // Unrecognized or missing plan on a completed session — do
           // nothing destructive rather than guessing (in particular,

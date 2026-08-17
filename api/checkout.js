@@ -4,8 +4,21 @@ import { getSupabaseAdmin } from '../lib/supabaseAdmin.js';
 const PRICE_IDS = {
   monthly: 'price_1TzMqVPJRgYrBGoz6zGWYRH1',
   annual: 'price_1U3MV1PJRgYrBGozO4ordIz6',
-  single: 'price_1TzMu4PJRgYrBGozYQ5XgKTs'
+  single: 'price_1TzMu4PJRgYrBGozYQ5XgKTs',
+  // Universal, non-expiring credits usable on any tool (Profile Analyzer,
+  // Email Check, or Paper Check) -- see supabase/migrations/
+  // 0010_add_universal_credit_packs.sql and api/webhook.js's
+  // checkout.session.completed handler for how these are granted.
+  credits5: 'price_1U5HlzPJRgYrBGozhHAkVeZw',
+  credits15: 'price_1U5Hm2PJRgYrBGozOH7KVurJ'
 };
+
+// One-time Stripe Checkout purchases (mode: 'payment') -- everything else
+// is a recurring subscription (mode: 'subscription'). Keeping this as an
+// explicit set (rather than a single `=== 'single'` check) is what lets
+// the two new credit packs share the exact same one-time-payment branch
+// below without touching the subscription path at all.
+const ONE_TIME_PLANS = new Set(['single', 'credits5', 'credits15']);
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -47,7 +60,7 @@ export default async function handler(req, res) {
     }
 
     const stripe = getStripe();
-    const mode = plan === 'single' ? 'payment' : 'subscription';
+    const mode = ONE_TIME_PLANS.has(plan) ? 'payment' : 'subscription';
     // Never derive this from the request (Origin/Host headers are
     // attacker-controlled on a direct API call, not just browser-sent) —
     // Stripe will redirect here after a real payment, so an attacker-chosen
