@@ -341,3 +341,92 @@ test('rejects non-POST methods', async (t) => {
   await handler({ method: 'GET', body: baseBody }, res);
   assert.equal(res.statusCode, 405);
 });
+
+// ════════════════════ Evidence Packet fields (added, not replacing) ════════
+// api/evidence-packet.js needs the fuller Vision fields (full URLs, not
+// just domains) -- these are ADDED alongside the pre-existing
+// matchCount/pages contract covered by every test above, which stays
+// completely unchanged (confirmed by all of those still passing).
+
+test('adds fullMatchingImages/partialMatchingImages/visuallySimilarImages/pagesWithMatchingImages alongside the unchanged matchCount/pages', async (t) => {
+  withKey();
+  stubAllowed(t);
+  t.mock.method(globalThis, 'fetch', async () => ({
+    ok: true,
+    json: async () => ({
+      responses: [{
+        webDetection: {
+          fullMatchingImages: [{ url: 'https://instagram.com/p/abc?utm=1' }],
+          partialMatchingImages: [{ url: 'https://mirror.example/x' }],
+          visuallySimilarImages: [{ url: 'https://similar1.example/a' }, { url: 'https://similar2.example/b' }],
+          pagesWithMatchingImages: [
+            { url: 'https://instagram.com/p/abc?utm=1', pageTitle: 'A real post' },
+            { url: 'https://mirror.example/x' }
+          ]
+        }
+      }]
+    })
+  }));
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', body: baseBody }, res);
+
+  assert.equal(res.statusCode, 200);
+  const r = res.body.results[0];
+
+  // Unchanged pre-existing fields, still domain-only:
+  assert.equal(r.matchCount, 2);
+  assert.deepEqual(r.pages, [
+    { url: 'instagram.com', title: 'A real post' },
+    { url: 'mirror.example', title: null }
+  ]);
+
+  // New fields -- full URLs, for the Evidence Packet feature only:
+  assert.deepEqual(r.fullMatchingImages, ['https://instagram.com/p/abc?utm=1']);
+  assert.deepEqual(r.partialMatchingImages, ['https://mirror.example/x']);
+  assert.deepEqual(r.visuallySimilarImages, ['https://similar1.example/a', 'https://similar2.example/b']);
+  assert.deepEqual(r.pagesWithMatchingImages, [
+    { url: 'https://instagram.com/p/abc?utm=1', pageTitle: 'A real post' },
+    { url: 'https://mirror.example/x', pageTitle: null }
+  ]);
+});
+
+test('visuallySimilarImages is capped at 5, independent of the other new fields', async (t) => {
+  withKey();
+  stubAllowed(t);
+  t.mock.method(globalThis, 'fetch', async () => ({
+    ok: true,
+    json: async () => ({
+      responses: [{
+        webDetection: {
+          visuallySimilarImages: Array.from({ length: 12 }, (_, i) => ({ url: `https://similar${i}.example/x` }))
+        }
+      }]
+    })
+  }));
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', body: baseBody }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.results[0].visuallySimilarImages.length, 5);
+});
+
+test('an image with no webDetection contributes empty arrays for every new field too, not undefined', async (t) => {
+  withKey();
+  stubAllowed(t);
+  t.mock.method(globalThis, 'fetch', async () => ({ ok: true, json: async () => ({ responses: [{}] }) }));
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', body: baseBody }, res);
+
+  assert.equal(res.statusCode, 200);
+  const r = res.body.results[0];
+  assert.deepEqual(r.fullMatchingImages, []);
+  assert.deepEqual(r.partialMatchingImages, []);
+  assert.deepEqual(r.visuallySimilarImages, []);
+  assert.deepEqual(r.pagesWithMatchingImages, []);
+});

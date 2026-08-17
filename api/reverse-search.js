@@ -24,6 +24,18 @@ const PRO_DAILY_REVERSE_SEARCH_LIMIT = 10;
 // request hanging indefinitely.
 const VISION_TIMEOUT_MS = 25000;
 
+// Defensive bounds on the fuller Vision fields added for the Evidence
+// Packet feature (api/evidence-packet.js) below -- Vision doesn't return
+// unbounded arrays in practice, but nothing stops us from capping payload
+// size the same way the rest of this codebase bounds otherwise-unbounded
+// input (MAX_PHOTOS here, MAX_DOMAINS in api/inspector-advice.js, etc.).
+// visuallySimilarImages specifically capped at 5 per the Evidence Packet
+// spec -- it's the weakest signal of the three match types, so it doesn't
+// need as much room as confirmed (full/partial) matches.
+const MAX_MATCH_URLS = 20;
+const MAX_VISUALLY_SIMILAR = 5;
+const MAX_PAGES_WITH_MATCHES = 20;
+
 function extractDomain(url) {
   try {
     return new URL(url).hostname;
@@ -110,26 +122,73 @@ export default async function handler(req, res) {
 
     // Positionally aligned with `images`, same convention as api/ocr.js's
     // `texts`. An image with no web matches, or one Vision reported a
-    // per-image error for, contributes matchCount: 0 / pages: [] rather
-    // than failing the whole batch -- not an error, just nothing found.
-    // Only domain + page title are ever surfaced, never full page
-    // content -- this is a signal, not a scrape.
+    // per-image error for, contributes matchCount: 0 / pages: [] (and all
+    // the new fields below as empty arrays) rather than failing the whole
+    // batch -- not an error, just nothing found.
+    //
+    // `matchCount` and `pages` (domain-only, no full URLs) are the
+    // original fields index.html's reverseSearchDetailHTML() already
+    // renders -- left completely unchanged so that existing behavior and
+    // its tests keep working exactly as before.
+    //
+    // Everything below `pages` is new, added for the Evidence Packet
+    // feature (api/evidence-packet.js), which -- unlike the original
+    // domain-only design -- deliberately needs the actual full URLs a
+    // photo was found at, since a real takedown/evidence document has to
+    // point at the exact page, not just the domain. This only ever
+    // reflects data about photos the requesting user themselves uploaded,
+    // returned to them.
     const results = images.map((_, i) => {
       const entry = responses[i];
       const webDetection = entry && !entry.error ? entry.webDetection : null;
       if (!webDetection) {
-        return { matchCount: 0, pages: [] };
+        return {
+          matchCount: 0,
+          pages: [],
+          fullMatchingImages: [],
+          partialMatchingImages: [],
+          visuallySimilarImages: [],
+          pagesWithMatchingImages: []
+        };
       }
 
+      // matchCount stays computed from the raw (unsliced) Vision counts --
+      // exactly the original calculation -- so capping the new list
+      // fields below for payload size never changes this pre-existing
+      // number that reverseSearchDetailHTML() already displays.
       const fullCount = Array.isArray(webDetection.fullMatchingImages) ? webDetection.fullMatchingImages.length : 0;
       const partialCount = Array.isArray(webDetection.partialMatchingImages) ? webDetection.partialMatchingImages.length : 0;
+
+      const fullMatchingImages = Array.isArray(webDetection.fullMatchingImages)
+        ? webDetection.fullMatchingImages.filter((m) => typeof m.url === 'string').map((m) => m.url).slice(0, MAX_MATCH_URLS)
+        : [];
+      const partialMatchingImages = Array.isArray(webDetection.partialMatchingImages)
+        ? webDetection.partialMatchingImages.filter((m) => typeof m.url === 'string').map((m) => m.url).slice(0, MAX_MATCH_URLS)
+        : [];
+      const visuallySimilarImages = Array.isArray(webDetection.visuallySimilarImages)
+        ? webDetection.visuallySimilarImages.filter((m) => typeof m.url === 'string').map((m) => m.url).slice(0, MAX_VISUALLY_SIMILAR)
+        : [];
+      const pagesWithMatchingImages = Array.isArray(webDetection.pagesWithMatchingImages)
+        ? webDetection.pagesWithMatchingImages
+            .filter((p) => typeof p.url === 'string')
+            .map((p) => ({ url: p.url, pageTitle: typeof p.pageTitle === 'string' ? p.pageTitle : null }))
+            .slice(0, MAX_PAGES_WITH_MATCHES)
+        : [];
+
       const pages = Array.isArray(webDetection.pagesWithMatchingImages)
         ? webDetection.pagesWithMatchingImages
             .filter((p) => typeof p.url === 'string')
             .map((p) => ({ url: extractDomain(p.url), title: typeof p.pageTitle === 'string' ? p.pageTitle : null }))
         : [];
 
-      return { matchCount: fullCount + partialCount, pages };
+      return {
+        matchCount: fullCount + partialCount,
+        pages,
+        fullMatchingImages,
+        partialMatchingImages,
+        visuallySimilarImages,
+        pagesWithMatchingImages
+      };
     });
 
     return res.status(200).json({ results });
