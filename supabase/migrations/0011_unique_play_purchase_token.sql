@@ -1,0 +1,42 @@
+-- Run this in the Supabase SQL Editor for whichever project APP_SUPABASE_URL
+-- points at, before deploying the updated api/play-verify.js.
+--
+-- Fixes a Pro-minting vulnerability found in security review: a verified
+-- Google Play purchaseToken could be resubmitted with an arbitrary fresh
+-- userId indefinitely, each call granting a brand-new anonymous device
+-- full Pro access. Google's purchases.subscriptionsv2.get / purchases.
+-- products.get calls confirm only that a token+productId represents a
+-- real, currently-active purchase -- never who is presenting it -- and
+-- nothing here previously checked whether a token was already claimed by
+-- a different id. api/play-verify.js now performs an application-level
+-- check for this before granting access (see that file); this constraint
+-- is the actual race-safe backstop underneath it -- a concurrent request
+-- for the same token under a different userId gets converted into a
+-- unique-violation error at write time (Postgres error code 23505)
+-- instead of silently succeeding, which api/play-verify.js also handles.
+--
+-- Postgres unique constraints treat NULL as distinct from every other
+-- NULL, so the many rows that have never made a Play purchase
+-- (play_purchase_token IS NULL, the default/common case -- Stripe
+-- customers, free-tier users) are entirely unaffected. Only two rows both
+-- claiming the SAME non-null token value would collide.
+--
+-- ════════════════════ RUN THIS CHECK FIRST ════════════════════
+-- If the bug being fixed here was already exploited in production, there
+-- could already be duplicate play_purchase_token values across different
+-- rows -- which would make the ALTER TABLE below fail outright with a
+-- unique-violation error instead of applying. Run this query first; if it
+-- returns any rows, each one is a token currently shared by multiple
+-- device ids and must be resolved (decide which row is the legitimate
+-- original owner, per your own records/judgment, and null out
+-- play_purchase_token -- and reconsider plan_status -- on the others)
+-- before the ALTER TABLE below will succeed:
+--
+--   select play_purchase_token, array_agg(id) as ids, count(*)
+--   from public.users
+--   where play_purchase_token is not null
+--   group by play_purchase_token
+--   having count(*) > 1;
+
+alter table public.users
+  add constraint users_play_purchase_token_key unique (play_purchase_token);
