@@ -1458,6 +1458,14 @@ textarea{min-height:84px;line-height:1.55}
       </div>
     </div>
 
+    <div class="plan-opt" onclick="selPaperMode(this,'research')" id="paperModeResearch">
+      <div class="plan-radio"></div>
+      <div class="plan-info">
+        <div class="plan-name">I'm researching, haven't written it yet</div>
+        <div class="plan-price">Research Coach — plan before you write</div>
+      </div>
+    </div>
+
     <div class="card" style="margin-top:12px">
       <div class="cb">
         <div class="r2">
@@ -1472,9 +1480,13 @@ textarea{min-height:84px;line-height:1.55}
           <label>Assignment Prompt</label>
           <textarea id="paperAssignment" rows="4" placeholder="Paste the assignment instructions..."></textarea>
         </div>
-        <div class="fg">
+        <div class="fg" id="paperTextWrap">
           <label>Paper Text</label>
           <textarea id="paperText" rows="10" placeholder="Paste the full paper here..."></textarea>
+        </div>
+        <div class="fg" id="paperTopicWrap" style="display:none">
+          <label>Topic or Working Thesis</label>
+          <input type="text" id="paperTopic" placeholder="e.g. How social media misinformation affects voter behavior in swing states">
         </div>
         <button class="btn-p" onclick="runPaperAnalysis()">🎓 Check Paper</button>
 
@@ -2197,7 +2209,8 @@ async function runEmailAnalysis(){
 // ════════════════════ PAPER CHECK MODE
 const PAPER_DISC={
   instructor:'<strong>⚠ Disclaimer:</strong> This report highlights patterns worth a follow-up conversation with the student — it is not proof of AI use or academic dishonesty. Textbook-specific observations may be incomplete or wrong; verify before acting.',
-  writer:'<strong>⚠ Disclaimer:</strong> This is a self-check tool to help you strengthen your writing — not a verdict on you. AI-detection signals are often wrong, especially for non-native English writers. Textbook-specific observations may be incomplete; use your judgment.'
+  writer:'<strong>⚠ Disclaimer:</strong> This is a self-check tool to help you strengthen your writing — not a verdict on you. AI-detection signals are often wrong, especially for non-native English writers. Textbook-specific observations may be incomplete; use your judgment.',
+  research:'<strong>⚠ Note:</strong> Research Coach helps you plan and think — it never writes sentences or paragraphs for your paper. Submitting AI-written text as your own may violate your school\'s academic integrity policy, and policies vary by school and course — check yours.'
 };
 let paperMode='instructor';
 function selPaperMode(el,mode){
@@ -2205,9 +2218,19 @@ function selPaperMode(el,mode){
   document.querySelectorAll('#pg-paper .plan-opt').forEach(o=>o.classList.remove('sel'));
   el.classList.add('sel');
   document.getElementById('paperDisc').innerHTML=PAPER_DISC[mode];
+
+  const isResearch=mode==='research';
+  document.getElementById('paperTextWrap').style.display=isResearch?'none':'';
+  document.getElementById('paperTopicWrap').style.display=isResearch?'':'none';
+  document.querySelector('#pg-paper .btn-p').textContent=isResearch?'🧭 Plan My Research':'🎓 Check Paper';
 }
 
 async function runPaperAnalysis(){
+  // Research Coach is a completely separate, Pro-only, pre-writing flow --
+  // its own endpoint, its own gating, its own rendering. Everything below
+  // this guard is the original instructor/writer code path, unchanged.
+  if(paperMode==='research'){return runResearchCoach();}
+
   const school=document.getElementById('paperSchool').value.trim();
   const course=document.getElementById('paperCourse').value.trim();
   const textbook=document.getElementById('paperTextbook').value.trim();
@@ -2255,6 +2278,110 @@ async function runPaperAnalysis(){
   }finally{
     btn.disabled=false;btn.textContent='🎓 Check Paper';
   }
+}
+
+// ────── RESEARCH COACH (Pro-only, pre-writing mode) ──────
+// Entirely separate from the instructor/writer flow above: own endpoint
+// (api/research-coach.js), own Pro gate, own rendering. Never touches
+// check_and_increment_usage / the free-analysis counter -- non-Pro users
+// are routed to the paywall before any request is ever made, same
+// courtesy-gate pattern as Case File's askInspector()/
+// generateEvidencePacket(). Server-side Pro enforcement lives entirely in
+// api/research-coach.js; this client-side check is a courtesy only.
+//
+// This exact banner is hardcoded here, never generated, and is prepended
+// FIRST -- before any content -- in every render of the results area
+// (success and error/retry states alike), so it's always the first thing
+// seen regardless of what the API returns.
+const RESEARCH_COACH_BANNER_HTML=`<div class="disc"><p><strong>⚠ Note:</strong> Research Coach helps you plan and think — it never writes sentences or paragraphs for your paper. Submitting AI-written text as your own may violate your school's academic integrity policy, and policies vary by school and course — check yours.</p></div>`;
+
+async function runResearchCoach(){
+  if(!S.isPro()){openPW();return;}
+
+  const school=document.getElementById('paperSchool').value.trim();
+  const course=document.getElementById('paperCourse').value.trim();
+  const textbook=document.getElementById('paperTextbook').value.trim();
+  const assignment=document.getElementById('paperAssignment').value.trim();
+  const topic=document.getElementById('paperTopic').value.trim();
+  if(!topic){toast('⚠️ Add a topic or working thesis');return;}
+
+  const btn=document.querySelector('#pg-paper .btn-p');
+  btn.disabled=true;btn.textContent='Planning...';
+
+  try{
+    const resp=await fetch('/api/research-coach',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({userId:getUid(),school,course,textbook,assignment,topic})
+    });
+    const data=await resp.json();
+
+    if(!resp.ok){
+      if(data.error==='pro_required'){openPW();return;}
+      renderResearchCoachError(data.error||"Research Coach couldn't generate a valid plan. Please try again.");
+      nav('paper-result');
+      return;
+    }
+
+    renderResearchCoachResult(data);
+    nav('paper-result');
+  }catch(e){
+    console.error('research-coach error:',e);
+    renderResearchCoachError("Research Coach couldn't generate a valid plan. Please try again.");
+    nav('paper-result');
+  }finally{
+    btn.disabled=false;btn.textContent='🧭 Plan My Research';
+  }
+}
+
+function researchListHTML(items,emptyLabel){
+  if(!items||!items.length) return `<div class="ev-empty">${esc(emptyLabel)}</div>`;
+  return `<ul class="flag-list">${items.map(q=>`<li class="flag-row"><span class="flag-txt">${esc(q)}</span></li>`).join('')}</ul>`;
+}
+
+function researchOutlineHTML(outline){
+  if(!outline||!outline.length) return `<div class="ev-empty">No outline generated</div>`;
+  return outline.map(o=>`
+    <div class="ev-page-row">
+      <div class="ev-page-domain">${esc(o.header||'')}</div>
+      <div class="ev-page-title">${esc(o.purpose||'')}</div>
+    </div>`).join('');
+}
+
+function renderResearchCoachResult(p){
+  const rq=p.research_questions||[], ol=p.outline||[], sc=p.source_categories||[], scq=p.self_check_questions||[];
+  document.getElementById('paperResult').innerHTML=`
+    ${RESEARCH_COACH_BANNER_HTML}
+    <div class="ev-section">
+      <div class="ev-section-hd">Research Questions to Investigate (${rq.length})</div>
+      ${researchListHTML(rq,'No research questions generated')}
+    </div>
+    <div class="ev-section">
+      <div class="ev-section-hd">Suggested Outline (${ol.length})</div>
+      ${researchOutlineHTML(ol)}
+    </div>
+    <div class="ev-section">
+      <div class="ev-section-hd">Types of Sources to Look For (${sc.length})</div>
+      ${researchListHTML(sc,'No source categories generated')}
+    </div>
+    <div class="ev-section">
+      <div class="ev-section-hd">Self-Check Questions for Later (${scq.length})</div>
+      ${researchListHTML(scq,'No self-check questions generated')}
+    </div>
+    <button class="btn-g" onclick="nav('paper')" style="width:100%;margin-top:12px">← Plan Another Topic</button>
+  `;
+}
+
+function renderResearchCoachError(message){
+  document.getElementById('paperResult').innerHTML=`
+    ${RESEARCH_COACH_BANNER_HTML}
+    <div class="empty">
+      <span class="empty-icon">🧭</span>
+      <h3 class="empty-title">Couldn't Generate a Plan</h3>
+      <p class="empty-sub">${esc(message)}</p>
+      <button class="btn-g" onclick="nav('paper')" style="margin-top:20px;max-width:240px">← Back</button>
+    </div>
+  `;
 }
 
 // ────── PAPER CHECK: shared render helpers (used by both modes) ──────
