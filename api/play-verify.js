@@ -74,11 +74,45 @@ export default async function handler(req, res) {
     }
 
     const supabase = getSupabaseAdmin();
+
+    // A verified purchase proves the token+productId is real and
+    // currently active -- it says nothing about who is presenting it.
+    // Without this check, the same token could be replayed with an
+    // arbitrary fresh userId indefinitely, each call minting a new Pro
+    // identity from a single real purchase (see security review, "Pro-
+    // minting vulnerability"). Re-verification by the SAME userId (e.g.
+    // relaunching the app) is expected and must keep succeeding -- only a
+    // MISMATCHED id is blocked. Compare case-insensitively: `id` is a
+    // Postgres `uuid` column (always returned lowercase/canonical), while
+    // the client-supplied userId can be any case UUID_RE accepts.
+    const { data: existingRow, error: lookupError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('play_purchase_token', purchaseToken)
+      .maybeSingle();
+
+    if (lookupError) {
+      console.error('play-verify.js: token redemption lookup failed:', lookupError.message);
+      return res.status(500).json({ success: false, error: 'Server error. Please try again.' });
+    }
+    if (existingRow && existingRow.id.toLowerCase() !== userId.toLowerCase()) {
+      return res.status(409).json({ success: false, error: 'purchase_already_redeemed' });
+    }
+
     const { error: upsertError } = await supabase
       .from('users')
       .upsert({ id: userId, plan_status: 'active', play_purchase_token: purchaseToken }, { onConflict: 'id' });
 
     if (upsertError) {
+      // The check above closes the normal-path race, but a concurrent
+      // request for the same token under a different userId could still
+      // land between that SELECT and this UPSERT -- the unique constraint
+      // on play_purchase_token (migration 0011) is the actual race-safe
+      // backstop, surfacing here as a unique-violation. Treat it the same
+      // as the pre-check catching it, rather than a generic server error.
+      if (upsertError.code === '23505') {
+        return res.status(409).json({ success: false, error: 'purchase_already_redeemed' });
+      }
       console.error('Supabase upsert after Play purchase verification failed:', upsertError.message);
       return res.status(500).json({ success: false, error: 'Server error. Please try again.' });
     }
