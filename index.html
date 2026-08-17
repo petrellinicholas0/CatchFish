@@ -2665,7 +2665,10 @@ function evidencePacketBodyHTML(p){
       <div class="ev-section-hd">Your Submitted Text (Verbatim)</div>
       <div class="ev-submitted-text">${p.submittedTextExcerpt?esc(p.submittedTextExcerpt):'<span class="ev-empty-inline">(none provided)</span>'}</div>
     </div>
-    <button class="btn-s" style="width:100%;margin-top:4px" onclick="copyEvidencePacket()">📋 Copy to Clipboard</button>
+    <div class="act-row" style="margin-top:4px;margin-bottom:0">
+      <button class="btn-s" onclick="copyEvidencePacket()">📋 Copy to Clipboard</button>
+      <button class="btn-s" onclick="downloadEvidencePacket()">⬇️ Download as File</button>
+    </div>
   `;
 }
 
@@ -2765,6 +2768,26 @@ async function copyEvidencePacket(){
     console.error('clipboard copy error:',e);
     toast('⚠️ Could not copy — try selecting the text manually');
   }
+}
+
+// Pure client-side download -- no new API call, no new data. Reuses
+// buildEvidencePacketPlainText() (same function copyEvidencePacket() uses)
+// so the downloaded file and the clipboard content can never drift apart
+// into two different renderings of the same packet. Standard temporary
+// <a download> Blob pattern, no libraries.
+function downloadEvidencePacket(){
+  if(!curEvidencePacket){toast('⚠️ Nothing to download');return;}
+  const text=buildEvidencePacketPlainText(curEvidencePacket);
+  const dateStr=(curEvidencePacket.generatedAt||new Date().toISOString()).slice(0,10);
+  const blob=new Blob([text],{type:'text/plain'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`catchfish-evidence-packet-${dateStr}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function showResults(r){
