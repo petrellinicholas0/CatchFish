@@ -349,6 +349,16 @@ textarea{min-height:84px;line-height:1.55}
   display:inline-flex;align-items:center;justify-content:center;
 }
 .btn-s:active{background:var(--coral-lt)}
+/* Locked (non-Pro) Case File buttons -- reads as "premium, tap to
+   unlock," not "unavailable": dashed muted border + reduced opacity +
+   the 🔒 prefix already baked into the label, but still full-strength
+   tap feedback (:active), never disabled/inert. */
+.btn-s.btn-locked{
+  opacity:.7;border-style:dashed;
+  border-color:var(--muted2);color:var(--muted);
+  background:var(--paper2);
+}
+.btn-s.btn-locked:active{background:var(--paper3);opacity:.85}
 
 .btn-g{
   min-height:44px;padding:11px 18px;background:var(--paper2);
@@ -541,6 +551,7 @@ textarea{min-height:84px;line-height:1.55}
 .tool-card.c1 .tool-card-icon{background:var(--coral-lt)}
 .tool-card.c2 .tool-card-icon{background:var(--rose-lt)}
 .tool-card.c3 .tool-card-icon{background:var(--amber-lt)}
+.tool-card.c4 .tool-card-icon{background:var(--teal-lt)}
 .tool-card-info{flex:1;min-width:0}
 .tool-card-info h3{font-size:15px;font-weight:700;margin-bottom:2px}
 .tool-card-info p{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);line-height:1.5}
@@ -751,6 +762,7 @@ textarea{min-height:84px;line-height:1.55}
 }
 .plan-badge.hot{background:var(--coral);color:#fff}
 .plan-badge.best{background:var(--teal);color:#fff}
+.plan-badge.pro{background:var(--ink);color:var(--paper)}
 
 .modal-feats{margin:14px 0 18px;list-style:none}
 .modal-feat{
@@ -774,6 +786,15 @@ textarea{min-height:84px;line-height:1.55}
   padding:13px 15px;font-family:'JetBrains Mono',monospace;
   font-size:12px;line-height:1.7;color:var(--ink);white-space:pre-wrap;
 }
+
+/* ─── CASE FILE (groups Ask the Inspector + Evidence Packet under the
+   Image Authenticity match) ─────────────────────────────── */
+.cf-section{
+  margin-top:10px;padding-top:10px;
+  border-top:1.5px dashed var(--border);
+}
+.cf-hd{font-size:13px;font-weight:700;margin-bottom:2px}
+.cf-sub{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-bottom:8px}
 
 /* ─── EVIDENCE PACKET (pure data readout, not narrative) ─────────────────────────────── */
 .ev-section{margin-bottom:14px}
@@ -1017,6 +1038,16 @@ textarea{min-height:84px;line-height:1.55}
   </div>
 </div>
 
+<!-- ═══════════════════════════════════ CASE FILE INFO (home card, Pro users only) -->
+<div class="modal-ov" id="caseFileInfoModal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title" style="font-size:20px">📁 Case File</div>
+    <p class="modal-sub" style="text-align:left">Ask the Inspector and Evidence Packet aren't a separate tool — they activate automatically inside Profile Analyzer once a stolen-photo match is found. Run an analysis with a photo, and if reverse image search finds a match, you'll see both options appear right under the results.</p>
+    <button class="btn-g" onclick="closeCaseFileInfo()" style="width:100%;margin-top:8px">Got it</button>
+  </div>
+</div>
+
 <!-- ═══════════════════════════════════ LOADING -->
 <div class="loading-ov" id="loadOv">
   <img src="assets/mascot/fishing.png" alt="" class="mascot-loader">
@@ -1085,6 +1116,15 @@ textarea{min-height:84px;line-height:1.55}
       <div class="tool-card-info">
         <h3>Paper Check</h3>
         <p>Assignment fit & AI-likelihood report for a submitted paper</p>
+      </div>
+      <span class="tool-card-arr">›</span>
+    </div>
+
+    <div class="tool-card c4" onclick="openCaseFileInfo()">
+      <span class="tool-card-icon">📁</span>
+      <div class="tool-card-info">
+        <h3 style="display:flex;align-items:center;gap:6px">Case File <span class="plan-badge pro">PRO</span></h3>
+        <p>Turn a stolen photo into evidence you can use</p>
       </div>
       <span class="tool-card-arr">›</span>
     </div>
@@ -2461,9 +2501,26 @@ function reverseSearchDetailHTML(rs){
       const domains=(x.pages||[]).map(p=>esc(p.url)).filter(Boolean).slice(0,5);
       return `🔎 Photo ${i+1}: found on ${x.matchCount} other page${x.matchCount===1?'':'s'}${domains.length?' — '+domains.join(', '):''}`;
     }).filter(Boolean).join('<br>');
+
+    // Case File groups Ask the Inspector + Evidence Packet under one named
+    // section, for every user once a match is found -- free users see it
+    // too, just visually locked. The lock/unlock treatment here is purely
+    // cosmetic: both buttons keep their existing onclick handlers
+    // (askInspector()/generateEvidencePacket()) completely unchanged --
+    // those functions already correctly route a non-Pro tap to openPW()
+    // themselves, so this never duplicates that gating logic.
+    const isPro=S.isPro();
+    const lockClass=isPro?'':' btn-locked';
+    const inspectorLabel=isPro?'🕵️ Ask the Inspector':'🔒 Ask the Inspector';
+    const evidenceLabel=isPro?'📋 Evidence Packet':'🔒 Evidence Packet';
+
     return `<div class="check-detail" style="margin-top:6px">${lines}</div>
-    <button class="btn-s" style="margin-top:8px;width:100%" onclick="askInspector()">🕵️ Ask the Inspector for removal help</button>
-    <button class="btn-s" style="margin-top:8px;width:100%" onclick="generateEvidencePacket()">📋 Generate Evidence Packet</button>`;
+    <div class="cf-section">
+      <div class="cf-hd">📁 Case File</div>
+      <div class="cf-sub">Turn this match into something you can act on.</div>
+      <button class="btn-s${lockClass}" style="width:100%" onclick="askInspector()">${inspectorLabel}</button>
+      <button class="btn-s${lockClass}" style="margin-top:8px;width:100%" onclick="generateEvidencePacket()">${evidenceLabel}</button>
+    </div>`;
   }
   return '';
 }
@@ -2839,6 +2896,19 @@ function openPW(){
   if(continueBtn) continueBtn.textContent=isInstalledApp()?'Upgrade via browser':'Continue';
 }
 function closePW(){document.getElementById('pwModal').classList.remove('on')}
+
+// Home screen "Case File" teaser card -- not a standalone tool, so this is
+// never a dead-end tap: Pro users get a short info modal pointing them to
+// where Case File actually lives (inside Profile Analyzer results), while
+// a non-Pro tap goes straight to the paywall, same as every other Pro
+// upsell in the app.
+function openCaseFileInfo(){
+  if(!S.isPro()){openPW();return;}
+  document.getElementById('caseFileInfoModal').classList.add('on');
+}
+function closeCaseFileInfo(){
+  document.getElementById('caseFileInfoModal').classList.remove('on');
+}
 
 let flagContext = null;
 function openFlagModal(tool){
