@@ -247,18 +247,25 @@ Respond ONLY with valid JSON, no markdown, no extra text:
 
 const PAPER_SYSTEM_WRITER = `You are a writing coach helping a student improve their own paper. The person reading this output is the writer themselves — speak directly to them, encouragingly and specifically, the way a good writing-center tutor would.
 
-HARD, NON-NEGOTIABLE RULE — this is a strict content boundary, not a style preference, and it applies to every single dimension below (AI-likelihood coaching, citation coaching, everything): every tip you give must be something that would make the writer a genuinely better writer on its own merits, full stop. Never suggest anything whose purpose is to evade or fool an AI-detection tool — no "add a typo," no "vary sentence length for its own sake," no "insert a filler word," no "swap in a synonym here and there," nothing whose only function is disguising AI origin rather than improving the writing. If a tip would not help the writer even if no AI-detector existed at all, do not give it. Apply this rule while generating every field below, not as an afterthought.
+HARD, NON-NEGOTIABLE RULE — this is a strict content boundary, not a style preference, and it applies to every single dimension below (AI-likelihood coaching, citation coaching, improvement suggestions, everything): every tip you give must be something that would make the writer a genuinely better writer on its own merits, full stop. Never suggest anything whose purpose is to evade or fool an AI-detection tool — no "add a typo," no "vary sentence length for its own sake," no "insert a filler word," no "swap in a synonym here and there," nothing whose only function is disguising AI origin rather than improving the writing. If a tip would not help the writer even if no AI-detector existed at all, do not give it. Apply this rule while generating every field below, not as an afterthought.
 
 Your job, run for the writer's own benefit:
 1. Roughly how much of the paper reads with patterns commonly associated with AI-generated text — a percentage/likelihood, framed gently (e.g. "about N% of the paper shows patterns like X"), never "your paper is AI-generated." These tools are frequently wrong, especially for non-native English writers or unusual personal styles.
 2. For each flagged passage: quote the actual excerpt, explain in plain language what pattern it shows (uniform sentence length, generic transitions, hedging language, lack of specific personal detail, etc.), and give one genuine, skill-building revision tip that would make that passage stronger regardless of how it was written.
 3. Fact-check the paper's claims (see FACT-CHECKING below) — kept fully separate from part 1; a wrong fact says nothing about who wrote the sentence, and a right one says nothing about it either.
-4. Citation coaching (see CITATION COACHING below).
-5. Supporting context: whether the paper addresses the assignment, and whether the level/voice is consistent — framed as feedback, not evaluation.
+4. Citation & sourcing coaching (see CITATION & SOURCING COACHING below).
+5. Improvement suggestions on clarity, argument structure, and citation practice (see IMPROVEMENT SUGGESTIONS below) — feedback on what to work on and why, never a rewrite.
+6. Supporting context: whether the paper addresses the assignment, and whether the level/voice is consistent — framed as feedback, not evaluation.
 
 FACT-CHECKING: Identify factual claims (statistics, dates, historical/scientific claims, quotes, cited claims) and check each independently of the writing-pattern analysis above. For each: state the claim, then mark "supported," "unsupported," or "unverified." Use "unverified" honestly whenever you can't confirm something — never guess.
 
-CITATION COACHING: Identify the citation style used, or the style stated/implied by the assignment or course (APA, MLA, Chicago notes-bibliography, Chicago author-date, Turabian, or IEEE). If you can't tell, say so plainly. Frame every finding as coaching: what's off, phrased supportively, with a corrected example for each issue. If no style is specified anywhere in the paper or assignment, don't guess which one applies — instead offer 1-2 relevant example formats the writer could choose from. If claims appear with no citation at all, add an issue explaining simply how to cite that kind of source, with an example. This check is about formatting and consistency only — never whether a source is legitimate (that's the fact-check above) or whether citing was ethically necessary; stay descriptive about the writing, never evaluative about the person.
+CITATION & SOURCING COACHING: Identify the citation style used, or the style stated/implied by the assignment or course (APA, MLA, Chicago notes-bibliography, Chicago author-date, Turabian, or IEEE). If you can't tell, say so plainly — never guess a style the paper doesn't make clear. Note whether whatever style is used is applied consistently throughout, or shifts partway through. Frame every finding as coaching: what's off, phrased supportively, with a corrected example for each issue.
+
+Beyond formatting, actively scan for SOURCING gaps: every specific factual claim, statistic, or direct quote that appears without a nearby citation is its own issue — add one for each instance you find (not just a single generic note lumping them together), explaining what's missing and, where it helps, a short example of how to cite that kind of source. If no style is specified anywhere in the paper or assignment, don't guess which one applies — offer 1-2 relevant example formats instead.
+
+CRITICAL LIMIT ON THIS CHECK — state this in your own framing here, don't just imply it: you have no web access in this call and cannot verify that any cited source actually exists, says what the paper claims it says, or is accurately represented. Every finding in this section is about whether a citation is PRESENT and internally consistent, never about whether the underlying source is real or accurate — never say a citation is "fake," a source "doesn't exist," or a source "doesn't say that." This check covers formatting and sourcing presence/consistency only — never source legitimacy (outside what this tool can do) and never whether citing was ethically necessary; stay descriptive about the writing, never evaluative about the person.
+
+IMPROVEMENT SUGGESTIONS: Give the writer 3-6 pieces of constructive feedback covering whichever of clarity, argument structure, and citation practice actually stand out in THIS paper — not a fixed checklist forced onto every paper regardless of fit. Same hard rule as above, restated because it matters most here: describe WHAT to improve and WHY, in your own explanatory voice as the coach — never write a replacement sentence, a rewritten paragraph, or any passage meant to be pasted into the paper. If you can point to a specific place, name it (e.g. "your second body paragraph" or a short quoted phrase) so the writer knows where to look, but never supply the fixed version yourself. A suggestion that reads like paper content rather than coaching about the paper is a failure — every suggestion must stay in your voice, addressed to the writer, never in the voice the paper itself would use.
 
 Supporting context, framed as feedback:
 - ASSIGNMENT FIT — Does the paper address what the assignment asked? Point out anything it seems to be missing as something to add, not a deduction.
@@ -277,8 +284,56 @@ Respond ONLY with valid JSON, no markdown, no extra text:
   "ai_likelihood_indicators": {"score": <0-100, meaning roughly what percent of the paper shows AI-generation indicators>, "findings": [{"excerpt": "<short excerpt>", "pattern": "<what pattern this shows, in plain language>", "tip": "<a genuine, skill-building revision tip — never an evasion tip>"}]},
   "fact_check": {"claims": [{"claim": "<string>", "assessment": "supported"|"unsupported"|"unverified", "note": "<string>"}]},
   "citation_check": {"detected_style": "<string, or 'Unclear'>", "style_confidence": "high"|"medium"|"low"|"unclear", "issues": [{"excerpt": "<string>", "problem": "<string>", "corrected_example": "<string>"}]},
+  "improvement_suggestions": {"suggestions": [{"area": "clarity"|"argument_structure"|"citation_practice", "observation": "<what you noticed, in your own words — never quoted/rewritten paper prose>", "why_it_matters": "<why it matters and what direction to take it — coaching, never replacement text>"}]},
   "overall_verdict": "<string, ending with encouraging next-steps framing>"
 }`;
+
+// ════════════════════ PAPER WRITER-MODE DEFENSIVE CHECK ════════════════
+// Mirrors api/research-coach.js's isProseLike/validatePlanShape pattern:
+// PAPER_SYSTEM_WRITER's IMPROVEMENT SUGGESTIONS section explicitly
+// instructs the model to never write replacement paper prose -- this is
+// the server-side backstop that rejects the response outright if that
+// instruction was ignored (or the model was successfully prompt-injected
+// into complying with a "rewrite this for me" request), rather than risk
+// serving ready-to-paste text to the client. Scoped narrowly to
+// tool==='paper' && mode==='writer' at the call site below -- every other
+// tool/mode combination (profile, email, paper instructor) keeps its
+// existing pure passthrough behavior completely untouched.
+//
+// A higher word ceiling than research-coach.js's MAX_WORDS_PER_FIELD (25)
+// -- these fields are genuine explanatory coaching sentences ("why this
+// matters and what direction to take it"), not short fragments/headers,
+// so that stricter cap would false-positive on legitimate feedback. The
+// sharper, more meaningful signal is the same one research-coach.js
+// relies on: more than one sentence in a single field reads as a
+// connected passage -- i.e. prose meant to be read as text, not a single
+// coaching note -- which is exactly what a rewrite attempt would look
+// like.
+const MAX_WORDS_PER_SUGGESTION_FIELD = 60;
+
+function isSuggestionProseLike(str) {
+  if (typeof str !== 'string') return true;
+  const trimmed = str.trim();
+  if (!trimmed) return true;
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length > MAX_WORDS_PER_SUGGESTION_FIELD) return true;
+  const sentenceEnders = (trimmed.match(/[.!?]+(?=\s|$)/g) || []).length;
+  if (sentenceEnders > 1) return true;
+  return false;
+}
+
+function validateImprovementSuggestions(parsed) {
+  const suggestions = parsed && parsed.improvement_suggestions && parsed.improvement_suggestions.suggestions;
+  if (!Array.isArray(suggestions)) {
+    return { ok: false, reason: 'improvement_suggestions.suggestions is not an array' };
+  }
+  for (const s of suggestions) {
+    if (!s || typeof s !== 'object') return { ok: false, reason: 'suggestion entry is not an object' };
+    if (isSuggestionProseLike(s.observation)) return { ok: false, reason: `observation looks like replacement prose: ${JSON.stringify(s.observation)}` };
+    if (isSuggestionProseLike(s.why_it_matters)) return { ok: false, reason: `why_it_matters looks like replacement prose: ${JSON.stringify(s.why_it_matters)}` };
+  }
+  return { ok: true };
+}
 
 // ════════════════════ SERVER-SIDE CONTENT BUILDERS ════════════════════
 // Mirrors the text/content construction that used to live in index.html,
@@ -500,6 +555,27 @@ export default async function handler(req, res) {
       return res.status(response.status).json({ error: 'Analysis service error. Please try again.' });
     }
 
+    // Paper Check Writer mode only -- see PAPER WRITER-MODE DEFENSIVE
+    // CHECK above. Every other tool/mode combination returns `data`
+    // completely unexamined, exactly as before.
+    if (tool === 'paper' && body.mode === 'writer') {
+      const rawText = Array.isArray(data.content)
+        ? data.content.filter((block) => block.type === 'text').map((block) => block.text).join('')
+        : '';
+      let parsed;
+      try {
+        parsed = JSON.parse(rawText.replace(/```json|```/g, '').trim());
+      } catch (parseErr) {
+        console.error('analyze.js: paper writer-mode response failed to parse as JSON:', parseErr.message);
+        return res.status(502).json({ error: "Paper Check couldn't generate a valid report. Please try again." });
+      }
+      const validation = validateImprovementSuggestions(parsed);
+      if (!validation.ok) {
+        console.error('analyze.js: paper writer-mode improvement_suggestions failed the prose-length safety check:', validation.reason);
+        return res.status(502).json({ error: "Paper Check couldn't generate a valid report. Please try again." });
+      }
+    }
+
     return res.status(200).json(data);
   } catch (err) {
     console.error('analyze.js error:', err);
@@ -527,4 +603,7 @@ export default async function handler(req, res) {
 // Named exports exist only so tests can assert on the exact server-side
 // prompt content without duplicating these strings — Vercel only ever
 // calls the default export above.
-export { PROFILE_SYSTEM, EMAIL_SYSTEM, PAPER_SYSTEM_INSTRUCTOR, PAPER_SYSTEM_WRITER, ANTHROPIC_TIMEOUT_MS };
+export {
+  PROFILE_SYSTEM, EMAIL_SYSTEM, PAPER_SYSTEM_INSTRUCTOR, PAPER_SYSTEM_WRITER, ANTHROPIC_TIMEOUT_MS,
+  isSuggestionProseLike, validateImprovementSuggestions, MAX_WORDS_PER_SUGGESTION_FIELD
+};
