@@ -229,8 +229,16 @@ test('paper tool: instructor mode gets PAPER_SYSTEM_INSTRUCTOR, writer mode gets
   stubSupabaseAllowed(t);
   const seen = [];
   stubAnthropicFetch(t, async (_url, opts) => {
-    seen.push(JSON.parse(opts.body).system);
-    return { ok: true, json: async () => ({ content: [{ text: '{}' }] }) };
+    const system = JSON.parse(opts.body).system;
+    seen.push(system);
+    // Writer-mode responses go through analyze.js's own improvement_
+    // suggestions validation (see the dedicated test block below) -- an
+    // empty `{}` would fail that and return 502, which isn't what this
+    // particular test (prompt selection) is checking. Only the writer
+    // system prompt gets a body shaped to pass validation.
+    const isWriter = system.includes('IMPROVEMENT SUGGESTIONS');
+    const body = isWriter ? { improvement_suggestions: { suggestions: [] } } : {};
+    return { ok: true, json: async () => ({ content: [{ type: 'text', text: JSON.stringify(body) }] }) };
   });
 
   const { default: handler, PAPER_SYSTEM_INSTRUCTOR, PAPER_SYSTEM_WRITER } = await loadHandler();
@@ -700,4 +708,173 @@ test('Anthropic timeout: a response slower than the new 55s ceiling still aborts
   assert.equal(res.statusCode, 504);
   assert.match(res.body.error, /timed out/i);
   assert.equal(state.releaseCalls.length, 1, 'the slot must still be released on this timeout');
+});
+
+// ════════════════════ Paper Check: Citation/Sourcing Check, Improvement
+// Suggestions, ESL/genre notes (Writer mode only) ════════════════════
+// Covers: the new IMPROVEMENT SUGGESTIONS section only exists in
+// PAPER_SYSTEM_WRITER, the citation-check enhancement is Writer-only, and
+// PAPER_SYSTEM_INSTRUCTOR is provably untouched by any of this.
+
+function anthropicText(t, obj) {
+  return t.mock.method(globalThis, 'fetch', async () => ({
+    ok: true,
+    json: async () => ({ content: [{ type: 'text', text: JSON.stringify(obj) }] })
+  }));
+}
+
+const VALID_WRITER_RESULT = {
+  assignment_fit: { score: 80, summary: 'x', unaddressed_parts: [] },
+  textbook_alignment: { textbook_recognized: false, confidence_note: 'x', findings: [] },
+  level_voice_consistency: { score: 80, findings: [], notable_shifts: [] },
+  ai_likelihood_indicators: { score: 10, findings: [] },
+  fact_check: { claims: [] },
+  citation_check: { detected_style: 'APA', style_confidence: 'high', issues: [] },
+  improvement_suggestions: {
+    suggestions: [
+      { area: 'clarity', observation: 'The third paragraph shifts topic abruptly.', why_it_matters: 'A clearer transition would help the reader follow your argument from one point to the next.' }
+    ]
+  },
+  overall_verdict: 'x'
+};
+
+test('PAPER_SYSTEM_WRITER contains the new IMPROVEMENT SUGGESTIONS and CITATION & SOURCING sections; PAPER_SYSTEM_INSTRUCTOR does not', async () => {
+  const { PAPER_SYSTEM_WRITER, PAPER_SYSTEM_INSTRUCTOR } = await loadHandler();
+  assert.match(PAPER_SYSTEM_WRITER, /IMPROVEMENT SUGGESTIONS/);
+  assert.match(PAPER_SYSTEM_WRITER, /CITATION & SOURCING COACHING/);
+  assert.match(PAPER_SYSTEM_WRITER, /improvement_suggestions/);
+  assert.doesNotMatch(PAPER_SYSTEM_INSTRUCTOR, /IMPROVEMENT SUGGESTIONS/);
+  assert.doesNotMatch(PAPER_SYSTEM_INSTRUCTOR, /improvement_suggestions/);
+});
+
+test('PAPER_SYSTEM_WRITER states the critical no-web-access citation-verification limit explicitly', async () => {
+  const { PAPER_SYSTEM_WRITER } = await loadHandler();
+  assert.match(PAPER_SYSTEM_WRITER, /no web access/i);
+  assert.match(PAPER_SYSTEM_WRITER, /cannot verify/i);
+});
+
+test('PAPER_SYSTEM_WRITER instructs the model to flag each unsupported claim/quote as its own issue, never guess a citation style', async () => {
+  const { PAPER_SYSTEM_WRITER } = await loadHandler();
+  assert.match(PAPER_SYSTEM_WRITER, /statistic, or direct quote/);
+  assert.match(PAPER_SYSTEM_WRITER, /never guess a style/);
+});
+
+test('a valid improvement_suggestions response in writer mode passes through as 200', async (t) => {
+  stubSupabaseAllowed(t);
+  anthropicText(t, VALID_WRITER_RESULT);
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', body: { tool: 'paper', mode: 'writer', userId: VALID_UID, paperText: 'body text' } }, res);
+
+  assert.equal(res.statusCode, 200);
+  const returnedText = res.body.content[0].text;
+  assert.deepEqual(JSON.parse(returnedText), VALID_WRITER_RESULT);
+});
+
+test('instructor mode is never subject to the improvement_suggestions check, even with no improvement_suggestions field at all', async (t) => {
+  stubSupabaseAllowed(t);
+  anthropicText(t, { assignment_fit: {}, textbook_alignment: {}, level_voice_consistency: {}, ai_likelihood_indicators: {}, fact_check: {}, citation_check: {}, overall_verdict: 'x' });
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', body: { tool: 'paper', mode: 'instructor', userId: VALID_UID, paperText: 'body text' } }, res);
+
+  assert.equal(res.statusCode, 200, 'instructor mode must be a pure passthrough -- no improvement_suggestions validation applies to it at all');
+});
+
+test('profile and email tools are never subject to the improvement_suggestions check', async (t) => {
+  stubSupabaseAllowed(t);
+  anthropicText(t, {}); // would fail improvement_suggestions validation if it were (incorrectly) applied
+
+  const { default: handler } = await loadHandler();
+  const res1 = mockRes();
+  await handler({ method: 'POST', body: { tool: 'profile', userId: VALID_UID, bio: 'x' } }, res1);
+  assert.equal(res1.statusCode, 200);
+
+  const res2 = mockRes();
+  await handler({ method: 'POST', body: { tool: 'email', userId: VALID_UID, emailText: 'x' } }, res2);
+  assert.equal(res2.statusCode, 200);
+});
+
+test('negative control: a writer-mode response missing improvement_suggestions entirely is rejected with 502, not silently passed through', async (t) => {
+  stubSupabaseAllowed(t);
+  const { improvement_suggestions, ...withoutSuggestions } = VALID_WRITER_RESULT;
+  anthropicText(t, withoutSuggestions);
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', body: { tool: 'paper', mode: 'writer', userId: VALID_UID, paperText: 'body text' } }, res);
+
+  assert.equal(res.statusCode, 502);
+});
+
+test('negative control: a rewrite attempt (a multi-sentence passage in observation, reading like paper prose) is blocked, not served to the client', async (t) => {
+  stubSupabaseAllowed(t);
+  const rewriteAttempt = {
+    ...VALID_WRITER_RESULT,
+    improvement_suggestions: {
+      suggestions: [{
+        area: 'clarity',
+        // A realistic prompt-injection/model-slip outcome: instead of
+        // coaching, the model writes an actual replacement paragraph --
+        // multiple connected sentences reading as paper content itself.
+        observation: 'Climate change represents one of the most pressing challenges of our time. Its effects are felt across every continent and every ecosystem. Immediate action is required to mitigate its worst consequences.',
+        why_it_matters: 'x'
+      }]
+    }
+  };
+  anthropicText(t, rewriteAttempt);
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', body: { tool: 'paper', mode: 'writer', userId: VALID_UID, paperText: 'body text' } }, res);
+
+  assert.equal(res.statusCode, 502, 'a multi-sentence rewrite-shaped passage must be rejected, never handed to the client as a "suggestion"');
+});
+
+test('negative control: an overlong single-sentence observation (past the word ceiling) is also blocked', async (t) => {
+  stubSupabaseAllowed(t);
+  const longObservation = 'This is a single very long sentence that just keeps going and going without stopping in an attempt to smuggle a huge amount of replacement content through the observation field by never actually using a period until the very end of this suspiciously long run-on which is exactly the kind of thing the word-count ceiling exists to catch even when the sentence-count check alone would not';
+  const tooLong = {
+    ...VALID_WRITER_RESULT,
+    improvement_suggestions: { suggestions: [{ area: 'clarity', observation: longObservation, why_it_matters: 'x' }] }
+  };
+  anthropicText(t, tooLong);
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', body: { tool: 'paper', mode: 'writer', userId: VALID_UID, paperText: 'body text' } }, res);
+
+  assert.equal(res.statusCode, 502);
+});
+
+test('a genuine single-sentence coaching note under the word ceiling passes validation (not a false positive)', async () => {
+  const { isSuggestionProseLike, MAX_WORDS_PER_SUGGESTION_FIELD } = await loadHandler();
+  assert.equal(MAX_WORDS_PER_SUGGESTION_FIELD, 60);
+  const genuine = 'Your second body paragraph introduces evidence about renewable energy costs but never explicitly ties it back to your thesis about policy reform, so consider adding a sentence that makes that connection clear.';
+  assert.equal(isSuggestionProseLike(genuine), false, 'a single substantive coaching sentence must not be flagged as prose');
+});
+
+test('malformed JSON in a writer-mode response is a clean 502, not a crash', async (t) => {
+  stubSupabaseAllowed(t);
+  t.mock.method(globalThis, 'fetch', async () => ({ ok: true, json: async () => ({ content: [{ type: 'text', text: 'not valid json {{{' }] }) }));
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', body: { tool: 'paper', mode: 'writer', userId: VALID_UID, paperText: 'body text' } }, res);
+
+  assert.equal(res.statusCode, 502);
+});
+
+test('validateImprovementSuggestions: rejects a non-array suggestions field', async () => {
+  const { validateImprovementSuggestions } = await loadHandler();
+  assert.equal(validateImprovementSuggestions({}).ok, false);
+  assert.equal(validateImprovementSuggestions({ improvement_suggestions: {} }).ok, false);
+  assert.equal(validateImprovementSuggestions({ improvement_suggestions: { suggestions: 'not an array' } }).ok, false);
+});
+
+test('validateImprovementSuggestions: accepts an empty suggestions array', async () => {
+  const { validateImprovementSuggestions } = await loadHandler();
+  assert.equal(validateImprovementSuggestions({ improvement_suggestions: { suggestions: [] } }).ok, true);
 });

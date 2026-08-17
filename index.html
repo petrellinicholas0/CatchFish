@@ -2756,7 +2756,17 @@ function paperFactCheckHTML(fc,introText){
     </div>`;
 }
 
-function paperCitationCheckHTML(cc){
+// mode is optional -- the Instructor call site below passes only `cc`,
+// same one-argument call it's always made, so `mode` there is always
+// undefined and this renders byte-identical to before this feature
+// existed. Only the Writer call site passes 'writer', which swaps in the
+// stronger sourcing-gap framing and the explicit "no web access, can't
+// verify a source is real" limit (FIX 1's CRITICAL CONSTRAINT) -- the
+// model is instructed to actually look harder for unsupported claims in
+// writer mode (see CITATION & SOURCING COACHING in PAPER_SYSTEM_WRITER),
+// this just makes sure the UI states the same limit just as prominently.
+function paperCitationCheckHTML(cc,mode){
+  const isWriter=mode==='writer';
   const issues=(cc&&cc.issues)||[];
   const issuesHTML=issues.length?issues.map(i=>`
     <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
@@ -2765,15 +2775,53 @@ function paperCitationCheckHTML(cc){
       ${i.corrected_example?`<div class="analysis-txt" style="color:var(--teal);margin-top:4px"><strong>Example:</strong> ${esc(i.corrected_example)}</div>`:''}
     </div>`).join('')
     :`<div class="analysis-txt" style="color:var(--muted)">No formatting issues found.</div>`;
+  const introText=isWriter
+    ?`Style confidence: ${esc((cc&&cc.style_confidence)||'unclear')}. Flags claims, quotes, and data points with no nearby citation, and whether your citation style is used consistently — but this check has no web access, so it can't verify a cited source actually exists, says what you claim, or is represented accurately. Only whether a citation is present and consistent.`
+    :`Style confidence: ${esc((cc&&cc.style_confidence)||'unclear')}. Checks formatting & internal consistency only — not source legitimacy.`;
   return `
     <div class="card">
-      <div class="card-hd"><span class="card-hd-icon">📖</span><h3>Citation Check</h3><span class="card-hd-tag">${esc((cc&&cc.detected_style)||'Unclear')}</span></div>
+      <div class="card-hd"><span class="card-hd-icon">📖</span><h3>${isWriter?'Citation & Sourcing Check':'Citation Check'}</h3><span class="card-hd-tag">${esc((cc&&cc.detected_style)||'Unclear')}</span></div>
       <div class="cb">
-        <div class="analysis-txt" style="color:var(--muted);margin-bottom:8px">Style confidence: ${esc((cc&&cc.style_confidence)||'unclear')}. Checks formatting & internal consistency only — not source legitimacy.</div>
+        <div class="analysis-txt" style="color:var(--muted);margin-bottom:8px">${introText}</div>
         ${issuesHTML}
       </div>
     </div>`;
 }
+
+// Writer mode only -- never called from renderPaperResultInstructor.
+// Constructive feedback in the model's own words; never a rewrite (see
+// IMPROVEMENT SUGGESTIONS in PAPER_SYSTEM_WRITER and the server-side
+// validateImprovementSuggestions() check in api/analyze.js that rejects
+// the whole response outright if this rule was violated).
+function paperImprovementSuggestionsHTML(is){
+  const suggestions=(is&&is.suggestions)||[];
+  const areaLabels={clarity:'Clarity',argument_structure:'Argument Structure',citation_practice:'Citation Practice'};
+  const suggestionsHTML=suggestions.length?suggestions.map(s=>`
+    <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+      ${s.area?`<div class="analysis-txt" style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.06em;color:var(--teal);text-transform:uppercase;margin-bottom:4px">${esc(areaLabels[s.area]||s.area)}</div>`:''}
+      <div class="analysis-txt">${esc(s.observation)}</div>
+      ${s.why_it_matters?`<div class="analysis-txt" style="color:var(--muted);margin-top:4px">${esc(s.why_it_matters)}</div>`:''}
+    </div>`).join('')
+    :`<div class="analysis-txt" style="color:var(--muted)">No specific suggestions — this paper is in good shape on these fronts.</div>`;
+  return `
+    <div class="card">
+      <div class="card-hd"><span class="card-hd-icon">💡</span><h3>Improvement Suggestions</h3></div>
+      <div class="cb">
+        <div class="analysis-txt" style="color:var(--muted);margin-bottom:8px">Feedback on what to work on and why — never a rewrite. You decide how to apply it.</div>
+        ${suggestionsHTML}
+      </div>
+    </div>`;
+}
+
+// FIX 3 (ESL) + FIX 4 (genre/length) — both modes, wherever the AI-
+// likelihood score/findings render. Kept static (not model-generated) and
+// short by design, same register as the "How CatchFish Checks Papers"
+// transparency card on the Learn page: plain, evidence-citing, never
+// alarmist. Does not replace or soften the existing "informational, not a
+// verdict" disclaimers already on this page — those stay exactly as they are.
+const PAPER_AI_CONTEXT_NOTES_HTML=`
+  <div class="analysis-txt" style="color:var(--muted);margin-bottom:4px">AI-detection tools often measure lexical/syntactic sophistication, not actual authorship — so simpler phrasing can trigger a false positive for non-native English writers or developing writers generally, independent of who wrote it.</div>
+  <div class="analysis-txt" style="color:var(--muted);margin-bottom:8px">Short, formulaic, or highly templated writing (lab reports, five-paragraph essays, structured short-answers) is inherently less reliable to score than a long-form essay — treat a flagged short submission with extra skepticism.</div>`;
 
 function renderPaperResult(r){
   if(paperMode==='writer') renderPaperResultWriter(r);
@@ -2826,6 +2874,7 @@ function renderPaperResultInstructor(r){
       <div class="card-hd"><span class="card-hd-icon">🤖</span><h3>AI-Likelihood Indicators</h3><span class="card-hd-tag">${esc(ai.score ?? '—')}% of paper</span></div>
       <div class="cb">
         <div class="analysis-txt" style="color:var(--muted);margin-bottom:8px">Supplementary evidence, presented for context — not proof of anything on its own.</div>
+        ${PAPER_AI_CONTEXT_NOTES_HTML}
         ${paperAiFindingsHTML(ai.findings)}
       </div>
     </div>
@@ -2858,13 +2907,16 @@ function renderPaperResultWriter(r){
       <div class="card-hd"><span class="card-hd-icon">🤖</span><h3>Writing Pattern Check</h3><span class="card-hd-tag">${esc(ai.score ?? '—')}% flagged</span></div>
       <div class="cb">
         <div class="analysis-txt" style="color:var(--muted);margin-bottom:8px">Patterns commonly associated with AI-generated text, each with a genuine tip to strengthen the writing either way.</div>
+        ${PAPER_AI_CONTEXT_NOTES_HTML}
         ${paperAiFindingsHTML(ai.findings)}
       </div>
     </div>
 
     ${paperFactCheckHTML(r.fact_check,"Checked separately from the writing-pattern review above — a wrong fact and how a sentence \"sounds\" are unrelated to each other.")}
 
-    ${paperCitationCheckHTML(r.citation_check)}
+    ${paperCitationCheckHTML(r.citation_check,'writer')}
+
+    ${paperImprovementSuggestionsHTML(r.improvement_suggestions)}
 
     <div class="card">
       <div class="card-hd"><span class="card-hd-icon">📝</span><h3>Assignment Fit</h3><span class="card-hd-tag">${esc(af.score ?? '—')}/100</span></div>
