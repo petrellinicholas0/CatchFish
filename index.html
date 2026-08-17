@@ -1228,6 +1228,26 @@ textarea{min-height:84px;line-height:1.55}
   </div>
   <div class="sb sb-top">
 
+    <!-- Screenshot smart import -->
+    <div class="card">
+      <div class="card-hd">
+        <span class="card-hd-icon">📱</span>
+        <h3>Import from Screenshot</h3>
+        <span class="card-hd-tag">optional</span>
+      </div>
+      <div class="cb">
+        <p style="font-size:12px;color:var(--muted2);margin-bottom:12px">auto-fills the form below — review before analyzing</p>
+        <div class="photo-grid" id="importGrid"></div>
+        <button class="btn-g" id="importBtn" style="display:none;margin-bottom:12px" onclick="importFromScreenshot()">✨ Import &amp; Auto-Fill</button>
+        <div class="upload-zone" id="importUpZone">
+          <input type="file" id="importIn" accept="image/*" multiple>
+          <span class="upload-zone-icon">📱</span>
+          <h4>Tap to upload screenshots</h4>
+          <p>Dating profile and/or conversation · up to 4 · PNG, JPG, WEBP</p>
+        </div>
+      </div>
+    </div>
+
     <!-- Photo upload -->
     <div class="card">
       <div class="card-hd">
@@ -2065,6 +2085,150 @@ async function extractTextFromPhotos(){
     toast('✅ Text extracted — review before analyzing');
   }catch(e){
     toast('❌ Couldn\'t extract text — try typing it manually');
+    console.error(e);
+  }finally{
+    btn.disabled=false;
+    btn.textContent=prevText;
+  }
+}
+
+// ════════════════════ SCREENSHOT SMART IMPORT
+// Convenience feature, same status as OCR above -- never touches
+// S.usage()/cf_usage/cf_reset/check_and_increment_usage. Gets its own,
+// fully independent daily cap (cf_import_usage/cf_import_reset) that
+// applies to ALL users, Pro included, since it exists purely to bound
+// API abuse rather than to gate a paid feature -- so, unlike
+// checkDailyReset() above, this reset check never early-exits for Pro.
+const IMPORT_DAILY_CAP=8;
+const MAX_IMPORT_PHOTOS=4;
+let importB64Arr=[];
+const importIn=document.getElementById('importIn');
+const importUpZone=document.getElementById('importUpZone');
+const importGrid=document.getElementById('importGrid');
+
+function importUsage(){return S.get('cf_import_usage',0);}
+function importLastReset(){
+  let val=S.get('cf_import_reset',null);
+  if(val===null){val=Date.now();S.set('cf_import_reset',val);}
+  return val;
+}
+function checkImportDailyReset(){
+  const last=importLastReset();
+  const hrs=(Date.now()-last)/(1000*60*60);
+  if(hrs>=RESET_HOURS){
+    S.set('cf_import_usage',0);
+    S.set('cf_import_reset',Date.now());
+  }
+}
+
+importIn.addEventListener('change',async e=>{
+  const files=Array.from(e.target.files||[]);
+  importIn.value='';
+  if(!files.length) return;
+
+  const remaining=MAX_IMPORT_PHOTOS-importB64Arr.length;
+  if(remaining<=0){toast(`⚠ Max ${MAX_IMPORT_PHOTOS} screenshots`);return;}
+
+  const toAdd=files.slice(0,remaining);
+  if(files.length>remaining){toast(`⚠ Only added ${toAdd.length} — max ${MAX_IMPORT_PHOTOS} screenshots`);}
+
+  const results=await Promise.all(toAdd.map(f=>compressImage(f).catch(()=>null)));
+  results.forEach(b64=>{if(b64)importB64Arr.push(b64);});
+  renderImportGrid();
+});
+
+function renderImportGrid(){
+  importGrid.innerHTML=importB64Arr.map((b64,i)=>`
+    <div class="photo-thumb">
+      <img src="data:image/jpeg;base64,${b64}" alt="Screenshot ${i+1}">
+      <button class="prev-clear" onclick="clearImportImg(${i})">✕</button>
+    </div>`).join('');
+  importUpZone.style.display=importB64Arr.length>=MAX_IMPORT_PHOTOS?'none':'block';
+  document.getElementById('importBtn').style.display=importB64Arr.length>0?'block':'none';
+}
+
+function clearImportImg(i){
+  importB64Arr.splice(i,1);
+  renderImportGrid();
+}
+
+async function importFromScreenshot(){
+  if(!importB64Arr.length) return;
+
+  checkImportDailyReset();
+  if(importUsage()>=IMPORT_DAILY_CAP){
+    toast('⚠ Import limit reached for today (8/day) — try again tomorrow or enter details manually');
+    return;
+  }
+
+  const btn=document.getElementById('importBtn');
+  const prevText=btn.textContent;
+  btn.disabled=true;
+  btn.textContent='Importing...';
+
+  let rawText;
+  try{
+    const ocrResp=await fetch('/api/ocr',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({images:importB64Arr})
+    });
+    const ocrData=await ocrResp.json();
+    if(!ocrResp.ok||ocrData.error){throw new Error(ocrData.error||('API error: '+ocrResp.status));}
+    rawText=(ocrData.texts||[]).filter(t=>t&&t.trim()).join('\n\n').trim();
+  }catch(e){
+    toast('❌ Couldn\'t read that screenshot — try entering details manually');
+    console.error(e);
+    btn.disabled=false;
+    btn.textContent=prevText;
+    return;
+  }
+  if(!rawText){
+    toast('❌ Couldn\'t read that screenshot — try entering details manually');
+    btn.disabled=false;
+    btn.textContent=prevText;
+    return;
+  }
+
+  try{
+    const impResp=await fetch('/api/screenshot-import',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({userId:getUid(),text:rawText})
+    });
+    const impData=await impResp.json();
+    if(!impResp.ok||impData.error){throw new Error(impData.error||('API error: '+impResp.status));}
+
+    const fieldMap=[
+      ['bio','bio','bio'],
+      ['age','age','age'],
+      ['loc','location','location'],
+      ['job','occupation','occupation'],
+      ['plat','platform','platform'],
+      ['msgs','messages','messages']
+    ];
+    const filled=[];
+    fieldMap.forEach(([elId,key,label])=>{
+      const val=impData[key];
+      if(val===null||val===undefined||!String(val).trim()) return;
+      const el=document.getElementById(elId);
+      if(!el||el.value.trim()) return;
+      el.value=val;
+      filled.push(label);
+    });
+
+    S.set('cf_import_usage',importUsage()+1);
+
+    if(filled.length){
+      toast(`✨ Imported: ${filled.join(', ')} — review before analyzing`);
+    }else{
+      toast('✨ Import complete — nothing new to fill in');
+    }
+
+    importB64Arr=[];
+    renderImportGrid();
+  }catch(e){
+    toast('❌ Import failed — try entering details manually');
     console.error(e);
   }finally{
     btn.disabled=false;
