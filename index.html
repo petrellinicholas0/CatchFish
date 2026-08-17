@@ -1146,7 +1146,7 @@ textarea{min-height:84px;line-height:1.55}
   <div class="modal-sheet">
     <div class="modal-handle"></div>
     <div class="modal-title" style="font-size:20px">📁 Case File</div>
-    <p class="modal-sub" style="text-align:left">Ask the Inspector and Evidence Packet aren't a separate tool — they activate automatically inside Profile Analyzer once a stolen-photo match is found. Run an analysis with a photo, and if reverse image search finds a match, you'll see both options appear right under the results.</p>
+    <p class="modal-sub" style="text-align:left">Ask the Inspector, Evidence Packet, and Report & Recover aren't a separate tool — they activate automatically inside Profile Analyzer once a stolen-photo match is found. Run an analysis with a photo, and if reverse image search finds a match, you'll see them appear right under the results. Evidence Packet compiles what was found; Report & Recover turns that into a ranked action checklist and ready-to-use drafts for IC3, the FTC, and — if money was lost — your bank's fraud department.</p>
     <button class="btn-g" onclick="closeCaseFileInfo()" style="width:100%;margin-top:8px">Got it</button>
   </div>
 </div>
@@ -1201,6 +1201,21 @@ textarea{min-height:84px;line-height:1.55}
     <div class="cf-banner" onclick="openCaseFileInfo()" tabindex="0" role="button">
       <span class="cf-banner-icon">📁</span>
       <div class="cf-banner-text">Compile stolen-photo evidence to bring to an attorney</div>
+      <span class="cf-banner-arr">›</span>
+    </div>
+
+    <!-- FIX 6: free, non-Pro-gated banner advertising the Report &
+         Recover flow -- deliberately outside and after #ob (the 18+
+         attestation overlay), same as every other .sb-top banner/card on
+         this page. Visible to every user regardless of plan; reuses
+         openCaseFileInfo() as-is (same as cf-banner above and tool-card
+         c4 below), which already branches Pro (info modal, now mentioning
+         Report & Recover too) vs non-Pro (paywall) -- no new gating logic
+         is introduced here. Language discipline matches FIX 5: "helps you"
+         framing, never a guarantee of outcome. -->
+    <div class="cf-banner" style="background:var(--amber-lt);border-color:rgba(245,166,35,.25)" onclick="openCaseFileInfo()" tabindex="0" role="button">
+      <span class="cf-banner-icon">🛟</span>
+      <div class="cf-banner-text">If something happens, we'll help you figure out what to do first and get ready-to-use drafts for reporting it</div>
       <span class="cf-banner-arr">›</span>
     </div>
 
@@ -3177,11 +3192,170 @@ function evidencePacketBodyHTML(p){
       <div class="ev-section-hd">Your Submitted Text (Verbatim)</div>
       <div class="ev-submitted-text">${p.submittedTextExcerpt?esc(p.submittedTextExcerpt):'<span class="ev-empty-inline">(none provided)</span>'}</div>
     </div>
-    <div class="act-row" style="margin-top:4px;margin-bottom:0">
+    <div class="act-row" style="margin-top:4px;margin-bottom:14px">
       <button class="btn-s" onclick="copyEvidencePacket()">📋 Copy to Clipboard</button>
       <button class="btn-s" onclick="downloadEvidencePacket()">⬇️ Download as File</button>
     </div>
+
+    ${reportRecoverIntakeHTML()}
+    <div id="rrResult"></div>
   `;
+}
+
+// ════════════════════ REPORT & RECOVER (FIX 1/2/3/4) ════════════════════
+// The "next step" after Evidence Packet: a ranked action checklist plus
+// three downloadable reference drafts (IC3, FTC, bank fraud-dispute
+// letter), generated from curEvidencePacket's already-compiled facts plus
+// a few facts collected directly here. Money-lost/platform/date are
+// short, directly user-typed fields -- never inferred by the model, so
+// the checklist ordering (computed server-side in api/report-recover.js,
+// not here) can never be "guessed" from ambiguous prose.
+let rrMoneyLost=null;
+
+function rrSetMoneyLost(lost){
+  rrMoneyLost=lost;
+  document.getElementById('rrMoneyYes').classList.toggle('sel',lost===true);
+  document.getElementById('rrMoneyNo').classList.toggle('sel',lost===false);
+  document.getElementById('rrAmountWrap').style.display=lost===true?'':'none';
+}
+
+function reportRecoverIntakeHTML(){
+  // Prefilled from the Profile Analyzer form's own Platform field when
+  // available (same "read a sibling page's already-open DOM node" pattern
+  // generateEvidencePacket() already uses for #bio/#msgs) -- still just a
+  // starting point the user can edit or clear.
+  const platEl=document.getElementById('plat');
+  const platformPrefill=platEl?platEl.value.trim():'';
+  return `
+    <div class="ev-section">
+      <div class="ev-section-hd">🛟 Report &amp; Recover</div>
+      <p class="analysis-txt" style="color:var(--muted);margin-bottom:10px">Turn what was found into a ranked action checklist and ready-to-use drafts for IC3, the FTC, and — if money was lost — your bank. This helps you draft faster; it doesn't file anything for you, and it's not a guarantee of any outcome.</p>
+      <div class="fg">
+        <label>Did you send any money to this person?</label>
+        <div class="act-row">
+          <button class="btn-s" id="rrMoneyYes" onclick="rrSetMoneyLost(true)">💸 Yes</button>
+          <button class="btn-s" id="rrMoneyNo" onclick="rrSetMoneyLost(false)">🚫 No</button>
+        </div>
+      </div>
+      <div id="rrAmountWrap" style="display:none">
+        <div class="r2">
+          <div class="fg"><label>Amount <span style="color:var(--muted2)">(optional)</span></label><input type="text" id="rrAmount" placeholder="e.g. $500"></div>
+          <div class="fg"><label>How it was sent <span style="color:var(--muted2)">(optional)</span></label><input type="text" id="rrMethod" placeholder="e.g. Zelle, gift card, wire"></div>
+        </div>
+      </div>
+      <div class="r2">
+        <div class="fg"><label>Platform <span style="color:var(--muted2)">(optional)</span></label><input type="text" id="rrPlatform" value="${esc(platformPrefill)}" placeholder="e.g. Hinge"></div>
+        <div class="fg"><label>Date <span style="color:var(--muted2)">(optional)</span></label><input type="text" id="rrIncidentDate" placeholder="e.g. March 2024"></div>
+      </div>
+      <button class="btn-p" id="rrGenerateBtn" onclick="generateReportRecoverPlan()">🛟 Get My Action Plan</button>
+    </div>`;
+}
+
+const REPORT_RECOVER_DISCLAIMER_HTML=`<div class="disc" style="margin-bottom:14px"><p><strong>⚠ Not legal advice:</strong> These are draft reference documents to help you report faster — not legal advice, not a filing on your behalf, and not a guarantee of any outcome. Review every field, especially anything marked [CONFIRM], before using it. You are responsible for what you submit.</p></div>`;
+
+function rrStepHTML(step){
+  return `<div class="check-row">
+    <span class="check-icon">${step.urgent?'⏱️':'▫️'}</span>
+    <div class="check-info">
+      <div class="check-name">${esc(step.label)}${step.urgent?' <span class="plan-badge hot">TIME-SENSITIVE</span>':''}</div>
+      <div class="check-detail">${esc(step.why)}</div>
+    </div>
+  </div>`;
+}
+
+let curReportRecoverDrafts=null;
+
+function rrDraftCardHTML(key,label,text){
+  if(!text) return '';
+  return `
+    <div class="ev-section">
+      <div class="ev-section-hd">${esc(label)}</div>
+      <div class="ev-submitted-text" style="white-space:pre-wrap">${esc(text)}</div>
+      <div class="act-row" style="margin-top:8px;margin-bottom:0">
+        <button class="btn-s" onclick="copyReportRecoverDraft('${key}')">📋 Copy</button>
+        <button class="btn-s" onclick="downloadReportRecoverDraft('${key}')">⬇️ Download</button>
+      </div>
+    </div>`;
+}
+
+async function generateReportRecoverPlan(){
+  if(!S.isPro()){openPW();return;}
+  if(!curEvidencePacket){toast('⚠️ Compile an Evidence Packet first');return;}
+
+  const amount=document.getElementById('rrAmount')?document.getElementById('rrAmount').value.trim():'';
+  const method=document.getElementById('rrMethod')?document.getElementById('rrMethod').value.trim():'';
+  const platform=document.getElementById('rrPlatform').value.trim();
+  const incidentDate=document.getElementById('rrIncidentDate').value.trim();
+
+  const btn=document.getElementById('rrGenerateBtn');
+  const prevText=btn.textContent;
+  btn.disabled=true;btn.textContent='Generating...';
+  const resultEl=document.getElementById('rrResult');
+  resultEl.innerHTML='<div class="ev-loading">🛟 Building your action plan…</div>';
+
+  try{
+    const resp=await fetch('/api/report-recover',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        userId:getUid(),
+        evidencePacket:curEvidencePacket,
+        moneyLost:rrMoneyLost===true,
+        moneyLostAmount:amount,
+        moneyLostMethod:method,
+        platform,
+        incidentDate
+      })
+    });
+    const data=await resp.json();
+
+    if(!resp.ok){
+      resultEl.innerHTML='';
+      toast(data.error==='pro_required'?'⚠️ Upgrade to Pro for Report & Recover':'⚠️ Couldn\'t generate a plan — try again');
+      return;
+    }
+
+    curReportRecoverDrafts=data.drafts;
+    const checklistHTML=`<div class="ev-section"><div class="ev-section-hd">Do This First</div><div class="checks">${data.checklist.map(rrStepHTML).join('')}</div></div>`;
+    const draftsHTML=
+      rrDraftCardHTML('ic3','IC3 Draft',data.drafts.ic3)+
+      rrDraftCardHTML('ftc','FTC Draft',data.drafts.ftc)+
+      rrDraftCardHTML('bank','Bank Fraud-Dispute Letter Draft',data.drafts.bank);
+    resultEl.innerHTML=REPORT_RECOVER_DISCLAIMER_HTML+checklistHTML+draftsHTML;
+  }catch(e){
+    console.error('report-recover error:',e);
+    resultEl.innerHTML='';
+    toast('⚠️ Couldn\'t generate a plan — try again');
+  }finally{
+    btn.disabled=false;btn.textContent=prevText;
+  }
+}
+
+async function copyReportRecoverDraft(key){
+  if(!curReportRecoverDrafts||!curReportRecoverDrafts[key])return;
+  try{
+    await navigator.clipboard.writeText(curReportRecoverDrafts[key]);
+    toast('✅ Copied to clipboard');
+  }catch(e){
+    console.error('clipboard copy error:',e);
+    toast('⚠️ Could not copy — try selecting the text manually');
+  }
+}
+
+// Pure client-side download, same Blob+<a download> pattern as
+// downloadEvidencePacket() -- no new API call, no submission of any kind.
+function downloadReportRecoverDraft(key){
+  if(!curReportRecoverDrafts||!curReportRecoverDrafts[key]){toast('⚠️ Nothing to download');return;}
+  const text=curReportRecoverDrafts[key];
+  const blob=new Blob([text],{type:'text/plain'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`catchfish-${key}-draft.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // Plain-text rendering for the clipboard -- structured with clear section
