@@ -4,6 +4,20 @@
 // only -- it never calls check_and_increment_usage and never touches
 // plan_status/usage_count/credits in any way. Do not add usage/paywall
 // gating here without a separate, explicit decision to do so.
+//
+// This endpoint used to accept {images} from anyone, with no userId and no
+// rate limiting at all -- an uncapped, unauthenticated relay to a paid
+// Vision API call (security review finding). It's still deliberately NOT
+// gated by any per-user daily-cap RPC (the plain "Extract Text From
+// Photos" button must keep working exactly as it always has, ungated,
+// same as api/screenshot-import.js's own separate import cap must not
+// apply here) -- but every request must now at least identify itself
+// (UUID_RE, same pattern used across the rest of the API surface) and is
+// bounded by the same IP-based rate limit api/analyze.js already uses as
+// a baseline defense-in-depth layer, so a script can no longer hit Google
+// Vision through this app with zero limit of any kind.
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const MAX_PHOTOS = 6; // mirrors index.html's client-side cap; enforced here independently
 
@@ -12,13 +26,53 @@ const MAX_PHOTOS = 6; // mirrors index.html's client-side cap; enforced here ind
 // call can't leave the client's "Extracting..." button stuck indefinitely.
 const VISION_TIMEOUT_MS = 20000;
 
+// ════════════════════ IP-BASED RATE LIMITING (defense in depth) ════════
+// Same pattern, same accepted limitations, as api/analyze.js's own
+// checkIpRateLimit -- see that file for the full rationale (plain
+// in-memory counter, doesn't survive cold starts or span instances,
+// x-forwarded-for is Vercel-set for real traffic but not a hard
+// guarantee). This endpoint has no per-userId gating at all otherwise, so
+// this is the only throttle standing between it and an unlimited script.
+const IP_RATE_LIMIT = 10; // requests per IP per window
+const IP_RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const ipHits = new Map();
+
+function extractClientIp(req) {
+  const xff = req.headers && req.headers['x-forwarded-for'];
+  if (!xff) return null;
+  const first = (Array.isArray(xff) ? xff[0] : xff).split(',')[0].trim();
+  return first || null;
+}
+
+function checkIpRateLimit(ip) {
+  if (!ip) return true;
+  const now = Date.now();
+  const entry = ipHits.get(ip);
+  if (!entry || now - entry.windowStart >= IP_RATE_WINDOW_MS) {
+    ipHits.set(ip, { count: 1, windowStart: now });
+    return true;
+  }
+  if (entry.count >= IP_RATE_LIMIT) {
+    return false;
+  }
+  entry.count += 1;
+  return true;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { images } = req.body || {};
+  if (!checkIpRateLimit(extractClientIp(req))) {
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
 
+  const { images, userId } = req.body || {};
+
+  if (typeof userId !== 'string' || !UUID_RE.test(userId)) {
+    return res.status(400).json({ error: 'Missing or invalid userId' });
+  }
   if (!Array.isArray(images) || images.length === 0) {
     return res.status(400).json({ error: 'Missing or empty images array' });
   }

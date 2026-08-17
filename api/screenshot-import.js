@@ -5,12 +5,15 @@
 // profile/conversation fields the client can offer to auto-fill.
 //
 // Same convenience-only architecture as api/ocr.js -- this endpoint never
-// calls check_and_increment_usage and never touches plan_status/
-// usage_count/credits. The client applies its own separate, independent
-// daily cap (cf_import_usage/cf_import_reset) before ever calling this
-// endpoint; that cap applies to Pro users too, since this is an abuse
-// guard, not a paywall. Do not add usage/paywall gating here without a
-// separate, explicit decision to do so.
+// calls check_and_increment_usage and never touches plan_status/credits.
+// It never gates on plan_status/Pro status either. It DOES, however,
+// enforce IMPORT_DAILY_CAP server-side (see check_and_increment_import_
+// usage below) -- the client's own cf_import_usage/cf_import_reset check
+// in index.html used to be the only enforcement of this cap, which meant
+// a direct call to this endpoint (which calls the paid Anthropic API) had
+// no limit at all (security review finding). The cap applies to Pro users
+// too, since this is an abuse guard, not a paywall -- do not add
+// plan-based gating here without a separate, explicit decision to do so.
 //
 // Entirely separate endpoint from api/analyze.js by design, matching the
 // established pattern (api/research-coach.js, api/inspector-advice.js,
@@ -19,7 +22,16 @@
 // rejects any client-supplied `system` field, so there is no generic
 // {system, messages} relay to reuse here.
 
+import { getSupabaseAdmin } from '../lib/supabaseAdmin.js';
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Mirrors the client-side constants of the same name in index.html --
+// those still drive the UI/toast copy, but this is the value that
+// actually gets enforced now (see migration
+// 0012_add_import_usage_gating.sql).
+const IMPORT_DAILY_CAP = 8;
+const RESET_HOURS = 24;
 
 // Several screenshots' worth of OCR text, generously bounded -- the client
 // caps at 4 images per import action, and Vision's TEXT_DETECTION output
@@ -84,6 +96,28 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Missing text' });
   }
   const textT = textTrimmed.slice(0, MAX_TEXT_LEN);
+
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase.rpc('check_and_increment_import_usage', {
+      p_user_id: userId,
+      p_daily_limit: IMPORT_DAILY_CAP,
+      p_reset_hours: RESET_HOURS
+    });
+
+    if (error) {
+      console.error('screenshot-import.js: usage check failed:', error.message);
+      return res.status(500).json({ error: 'Server error. Please try again.' });
+    }
+
+    const usage = Array.isArray(data) ? data[0] : data;
+    if (!usage || !usage.o_allowed) {
+      return res.status(429).json({ error: 'Import limit reached for today. Please try again tomorrow or enter details manually.', limitReached: true });
+    }
+  } catch (err) {
+    console.error('screenshot-import.js: usage check error:', err);
+    return res.status(500).json({ error: 'Server error. Please try again.' });
+  }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
