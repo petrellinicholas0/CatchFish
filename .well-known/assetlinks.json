@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.nickpetrelli.catchfish",
+      "sha256_cert_fingerprints": [
+        "D6:CF:C3:E9:76:2E:9D:86:0F:81:90:12:94:61:4A:53:67:BD:FB:39:C5:38:7B:EE:D0:87:94:CE:86:EB:2E:F5"
+      ]
+    }
+  }
+]

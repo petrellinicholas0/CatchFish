@@ -2409,7 +2409,7 @@ function updateUsageUI(){
   fill.className='usage-fill'+(pct===0?' d':pct<=34?' w':'');
   document.getElementById('uReset').textContent=rem>0?'Resets daily at midnight':msToReset();
   const upBtn=strip.querySelector('.btn-up');
-  if(upBtn) upBtn.textContent=isInstalledApp()?'Upgrade via browser':'Upgrade';
+  if(upBtn) upBtn.textContent=isInstalledApp()?'Upgrade':'Upgrade';
 }
 
 // Fetches the current server-side `credits` balance for display in the
@@ -3728,7 +3728,7 @@ function openPW(){
   const pwModal=document.getElementById('pwModal');
   pwModal.classList.add('on');
   const continueBtn=pwModal.querySelector('.btn-p');
-  if(continueBtn) continueBtn.textContent=isInstalledApp()?'Upgrade via browser':'Continue';
+  if(continueBtn) continueBtn.textContent=isInstalledApp()?'Upgrade':'Continue';
   // Credit packs are web (Stripe) checkout only for now -- no Google Play
   // Billing product SKU exists for them yet (only catchfish_monthly/
   // _annual/_single are registered in the Play Console; see
