@@ -1,7 +1,7 @@
 import { getAndroidPublisher } from '../lib/googlePlayAdmin.js';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin.js';
 
-const PACKAGE_NAME = 'com.catchfish.app';
+const PACKAGE_NAME = 'com.nickpetrelli.catchfish';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KNOWN_PRODUCT_IDS = new Set(['catchfish_monthly', 'catchfish_annual', 'catchfish_single']);
 
