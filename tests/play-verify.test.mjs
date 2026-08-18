@@ -118,7 +118,7 @@ test('subscription: SUBSCRIPTION_STATE_ACTIVE grants access and upserts plan_sta
     purchases: {
       subscriptionsv2: {
         get: async ({ packageName, token }) => {
-          assert.equal(packageName, 'com.catchfish.app');
+          assert.equal(packageName, 'com.nickpetrelli.catchfish');
           assert.equal(token, 'tok_abc123');
           return { data: { subscriptionState: 'SUBSCRIPTION_STATE_ACTIVE' } };
         }
@@ -181,7 +181,7 @@ test('onetime: purchaseState 0 (purchased) grants access and acknowledges an una
     purchases: {
       products: {
         get: async ({ packageName, productId, token }) => {
-          assert.equal(packageName, 'com.catchfish.app');
+          assert.equal(packageName, 'com.nickpetrelli.catchfish');
           assert.equal(productId, 'catchfish_single');
           assert.equal(token, 'tok_onetime');
           return { data: { purchaseState: 0, acknowledgementState: 0 } };
