@@ -1151,6 +1151,22 @@ textarea{min-height:84px;line-height:1.55}
   </div>
 </div>
 
+<!-- ═══════════════════════════════════ SHARE TARGET CHOOSER (Android/Chrome "Share to CatchFish") -->
+<div class="modal-ov" id="shareChooserModal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title" style="font-size:20px">📤 Shared to CatchFish</div>
+    <p class="modal-sub" style="text-align:left">Pick where this should go — it'll be pasted in for you to review, not sent anywhere automatically.</p>
+    <div class="card" style="margin-bottom:14px">
+      <div class="cb" style="font-size:13px;color:var(--muted2);white-space:pre-wrap;word-break:break-word" id="shareChooserPreview"></div>
+    </div>
+    <button class="btn-g" style="width:100%;margin-bottom:8px" onclick="pickShareTarget('analyze')">🔍 Profile Analyzer</button>
+    <button class="btn-g" style="width:100%;margin-bottom:8px" onclick="pickShareTarget('email')">✉️ Email Check</button>
+    <button class="btn-g" style="width:100%;margin-bottom:8px" onclick="pickShareTarget('paper')">🎓 Paper Check</button>
+    <button class="btn-g" onclick="closeShareChooserModal()" style="width:100%">Cancel</button>
+  </div>
+</div>
+
 <!-- ═══════════════════════════════════ LOADING -->
 <div class="loading-ov" id="loadOv">
   <img src="assets/mascot/fishing.png" alt="" class="mascot-loader">
@@ -1995,6 +2011,11 @@ window.addEventListener('load',()=>{
   }else if(checkoutStatus==='cancel'){
     toast('Checkout cancelled');
   }
+  const shareParam=checkoutParams.get('share');
+  if(shareParam==='1'){
+    history.replaceState({},'',location.pathname);
+    handleIncomingShare();
+  }
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('/sw.js').then(reg=>{
       console.log('Service worker registered with scope:', reg.scope);
@@ -2108,6 +2129,81 @@ function renderPhotoGrid(){
 function clearImg(i){
   imgB64Arr.splice(i,1);
   renderPhotoGrid();
+}
+
+// ════════════════════ SHARE TARGET (Web Share Target API — Android/Chrome
+// only; no iOS Safari support exists at the platform level). manifest.json's
+// share_target + sw.js's fetch interceptor drop an incoming share into the
+// Cache Storage API entirely on-device, then redirect here with ?share=1.
+// This picks that payload back up and clears it immediately (consume-once),
+// so it can never replay on a later, unrelated visit. A shared photo never
+// touches any server -- it goes straight from the Cache Storage API into
+// the same compressImage()/imgB64Arr path a manual upload uses.
+async function handleIncomingShare(){
+  if(!('caches' in window)) return;
+  let cache;
+  try{ cache=await caches.open('catchfish-share-v1'); }catch(e){ return; }
+
+  const payloadResp=await cache.match('/__share-payload').catch(()=>null);
+  if(!payloadResp) return;
+
+  let payload={};
+  try{ payload=await payloadResp.json(); }catch(e){}
+  const photoResp=await cache.match('/__share-photo').catch(()=>null);
+
+  await cache.delete('/__share-payload').catch(()=>{});
+  await cache.delete('/__share-photo').catch(()=>{});
+
+  if(photoResp){
+    if(imgB64Arr.length>=MAX_PHOTOS){
+      nav('analyze');
+      toast(`⚠️ Max ${MAX_PHOTOS} photos — shared photo not added`);
+      return;
+    }
+    const blob=await photoResp.blob().catch(()=>null);
+    const b64=blob?await compressImage(blob).catch(()=>null):null;
+    if(b64){
+      imgB64Arr.push(b64);
+      renderPhotoGrid();
+      nav('analyze');
+      toast('📸 Shared photo added — review before analyzing');
+    }else{
+      nav('analyze');
+      toast("⚠️ Couldn't load the shared photo — try uploading it directly");
+    }
+    return;
+  }
+
+  const sharedText=[payload.title,payload.text,payload.url].filter(Boolean).join('\n').trim();
+  if(sharedText) showShareChooser(sharedText);
+}
+
+let curSharedText='';
+function showShareChooser(text){
+  curSharedText=text;
+  document.getElementById('shareChooserPreview').textContent=text.length>240?text.slice(0,240)+'…':text;
+  document.getElementById('shareChooserModal').classList.add('on');
+}
+function closeShareChooserModal(){
+  document.getElementById('shareChooserModal').classList.remove('on');
+  curSharedText='';
+}
+function pickShareTarget(tool){
+  const text=curSharedText;
+  closeShareChooserModal();
+  if(tool==='analyze'){
+    document.getElementById('bio').value=text;
+    nav('analyze');
+    toast('✅ Pasted into Profile Analyzer — review before analyzing');
+  }else if(tool==='email'){
+    document.getElementById('emailText').value=text;
+    nav('email');
+    toast('✅ Pasted into Email Check — review before analyzing');
+  }else if(tool==='paper'){
+    document.getElementById('paperText').value=text;
+    nav('paper');
+    toast('✅ Pasted into Paper Check — review before analyzing');
+  }
 }
 
 // ════════════════════ OCR: EXTRACT TEXT FROM PHOTOS
