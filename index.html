@@ -1905,10 +1905,21 @@ async function tryPlayBilling(planId){
 }
 
 // ════════════════════ ANONYMOUS USER ID
+// crypto.randomUUID()'s fallback for WebViews/browsers that lack it must
+// still produce a real RFC4122-shaped v4 UUID (xxxxxxxx-xxxx-4xxx-yxxx-
+// xxxxxxxxxxxx, y in 8-b) -- api/checkout.js and every other endpoint that
+// takes a userId now reject anything that doesn't match that shape.
+function uuidV4Fallback(){
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c=>{
+    const r = Math.random()*16|0;
+    const v = c==='x' ? r : (r&0x3|0x8);
+    return v.toString(16);
+  });
+}
 function getUid(){
   let uid = S.get('cf_uid', null);
   if(!uid){
-    uid = (crypto.randomUUID ? crypto.randomUUID() : 'uid-'+Date.now()+'-'+Math.random().toString(36).slice(2));
+    uid = (crypto.randomUUID ? crypto.randomUUID() : uuidV4Fallback());
     S.set('cf_uid', uid);
   }
   return uid;
