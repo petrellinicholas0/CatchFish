@@ -1,6 +1,8 @@
 import { getStripe } from '../lib/stripeAdmin.js';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin.js';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const PRICE_IDS = {
   monthly: 'price_1TzMqVPJRgYrBGoz6zGWYRH1',
   annual: 'price_1U3MV1PJRgYrBGozO4ordIz6',
@@ -34,9 +36,10 @@ export default async function handler(req, res) {
     // bypassing the `!priceId` guard below despite never being a real
     // plan. Object.hasOwn() only matches an actual own property.
     const priceId = typeof plan === 'string' && Object.hasOwn(PRICE_IDS, plan) ? PRICE_IDS[plan] : undefined;
+    const validUserId = typeof userId === 'string' && UUID_RE.test(userId);
     const validEmail = typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-    if (!priceId || !userId || !validEmail) {
+    if (!priceId || !validUserId || !validEmail) {
       return res.status(400).json({ error: 'Missing or invalid plan, userId, or email' });
     }
 
