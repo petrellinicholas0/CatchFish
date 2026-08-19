@@ -1853,7 +1853,7 @@ const S = {
 };
 
 function isInstalledApp(){
-  return document.referrer.includes('android-app://') || window.matchMedia('(display-mode: standalone)').matches;
+  return document.referrer.includes('android-app://');
 }
 
 async function tryPlayBilling(planId){
