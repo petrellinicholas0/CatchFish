@@ -33,6 +33,55 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // function off mid-response with no body the client can parse.
 const ANTHROPIC_TIMEOUT_MS = 55000;
 
+// Shared ceiling for every tool/mode except Paper Check's Writer mode
+// (see PAPER_WRITER_MAX_TOKENS below). Profile Analyzer and Email Check
+// have fixed-size output shapes (a constant-length checks/red_flags/
+// green_flags array and one bounded free-text field), and Paper Check's
+// Instructor mode's arrays, while unbounded in principle, don't show this
+// failure in practice -- Writer mode is the one flow whose schema adds a
+// further unbounded improvement_suggestions array on top of everything
+// Instructor mode already requires, which is what actually needed room.
+const DEFAULT_MAX_TOKENS = 4096;
+
+// Paper Check Writer mode's JSON schema is the most token-hungry shape in
+// this file: on top of the same unbounded ai_likelihood_indicators/
+// fact_check/citation_check arrays Instructor mode already has (each
+// scaling with how many passages/claims/citation issues the actual paper
+// contains), it adds a Writer-mode-only improvement_suggestions array,
+// and the system prompt explicitly instructs enumerating every instance
+// found rather than summarizing. For a real, especially a genuinely long
+// (multi-page) paper and assignment prompt, this routinely pushed
+// generation past DEFAULT_MAX_TOKENS, truncating the response mid-JSON
+// and tripping the JSON.parse failure at the tool==='paper'&&mode==='writer'
+// check below -- see the investigation this fix follows from.
+//
+// Set to 128000 -- the actual, documented hard output-token ceiling for
+// claude-sonnet-5 (shared by the whole current Sonnet/Opus/Fable tier),
+// not an arbitrary larger number -- so a long-paper response structurally
+// cannot be truncated by this cap under any normal use, rather than being
+// merely less likely to be. Every other tool/mode combination is
+// unaffected and keeps DEFAULT_MAX_TOKENS.
+//
+// Known tradeoff, not fully resolved by this change: Anthropic's official
+// SDKs require switching to a streaming request once max_tokens gets this
+// large, specifically to avoid the response exceeding a non-streaming
+// HTTP call's timeout. This endpoint calls the Anthropic API via a plain
+// non-streaming fetch(), and this fix does not add streaming (out of
+// scope -- see the instruction this was built against). Raising the CAP
+// itself does not slow generation down -- the model still only takes as
+// long as its actual desired output requires, capped by whichever finishes
+// first: the model's own stop point or this ceiling -- so this is safe for
+// realistic Writer-mode output, which was already completing well within
+// this endpoint's existing ANTHROPIC_TIMEOUT_MS (55s)/Vercel maxDuration
+// (60s) even under the old, tighter 4096 cap. But if some future input
+// ever did drive the model to actually try to generate a large fraction
+// of this 128000-token budget, that specific request would still be at
+// risk of hitting those existing timeouts and surfacing as a 504 instead
+// of the 502 this fix addresses -- a pre-existing limitation of this
+// endpoint's non-streaming architecture, not something raising this
+// constant alone can fix.
+const PAPER_WRITER_MAX_TOKENS = 128000;
+
 // Soft cap on Pro (plan_status='active') daily usage. Pro requests are
 // NEVER blocked by this — check_and_increment_usage always returns
 // o_allowed=true for an active plan regardless of count — it only logs an
@@ -303,13 +352,17 @@ Respond ONLY with valid JSON, no markdown, no extra text:
 // A higher word ceiling than research-coach.js's MAX_WORDS_PER_FIELD (25)
 // -- these fields are genuine explanatory coaching sentences ("why this
 // matters and what direction to take it"), not short fragments/headers,
-// so that stricter cap would false-positive on legitimate feedback. The
-// sharper, more meaningful signal is the same one research-coach.js
-// relies on: more than one sentence in a single field reads as a
-// connected passage -- i.e. prose meant to be read as text, not a single
-// coaching note -- which is exactly what a rewrite attempt would look
-// like.
-const MAX_WORDS_PER_SUGGESTION_FIELD = 60;
+// so that stricter cap would false-positive on legitimate feedback.
+// Raised from an original 60 to 100 -- real model-written coaching notes
+// for these two fields routinely ran right up against 60 words and
+// tripped this check on entirely legitimate output, not just genuine
+// rewrite attempts. Sentence-count ceiling similarly relaxed from "more
+// than one sentence" to "more than two" -- a single coaching note can
+// reasonably read as two short sentences (an observation plus why it
+// matters) without being a disguised passage of replacement prose; three
+// or more connected sentences in one field is still treated as exactly
+// that signal.
+const MAX_WORDS_PER_SUGGESTION_FIELD = 100;
 
 function isSuggestionProseLike(str) {
   if (typeof str !== 'string') return true;
@@ -318,7 +371,7 @@ function isSuggestionProseLike(str) {
   const words = trimmed.split(/\s+/).filter(Boolean);
   if (words.length > MAX_WORDS_PER_SUGGESTION_FIELD) return true;
   const sentenceEnders = (trimmed.match(/[.!?]+(?=\s|$)/g) || []).length;
-  if (sentenceEnders > 1) return true;
+  if (sentenceEnders > 2) return true;
   return false;
 }
 
@@ -447,6 +500,7 @@ export default async function handler(req, res) {
 
   let system;
   let built;
+  let maxTokens = DEFAULT_MAX_TOKENS;
   if (tool === 'profile') {
     system = PROFILE_SYSTEM;
     built = buildProfileContent(body);
@@ -466,6 +520,9 @@ export default async function handler(req, res) {
   } else if (tool === 'paper') {
     system = body.mode === 'writer' ? PAPER_SYSTEM_WRITER : PAPER_SYSTEM_INSTRUCTOR;
     built = buildPaperContent(body);
+    if (body.mode === 'writer') {
+      maxTokens = PAPER_WRITER_MAX_TOKENS;
+    }
     if (!built.hasSubmission) {
       return res.status(400).json({ error: 'Missing paperText' });
     }
@@ -542,7 +599,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-5',
-        max_tokens: 4096,
+        max_tokens: maxTokens,
         system,
         messages
       })
