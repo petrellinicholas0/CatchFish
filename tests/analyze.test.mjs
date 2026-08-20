@@ -60,7 +60,7 @@ function stubSupabaseAllowed(t, overrides = {}) {
 }
 
 function stubAnthropicFetch(t, impl) {
-  return t.mock.method(globalThis, 'fetch', impl ?? (async () => ({ ok: true, json: async () => ({ content: [{ text: '{}' }] }) })));
+  return t.mock.method(globalThis, 'fetch', impl ?? (async () => ({ ok: true, json: async () => ({ content: [{ type: 'text', text: '{}' }] }) })));
 }
 
 async function loadHandler() {
@@ -105,7 +105,7 @@ test('profile tool: server builds the exact PROFILE_SYSTEM prompt, including the
   let capturedBody;
   stubAnthropicFetch(t, async (_url, opts) => {
     capturedBody = JSON.parse(opts.body);
-    return { ok: true, json: async () => ({ content: [{ text: '{}' }] }) };
+    return { ok: true, json: async () => ({ content: [{ type: 'text', text: '{}' }] }) };
   });
 
   const { default: handler, PROFILE_SYSTEM } = await loadHandler();
@@ -146,7 +146,7 @@ test('reverseSearchNote is prepended into the profile content sent to Anthropic 
   let capturedBody;
   stubAnthropicFetch(t, async (_url, opts) => {
     capturedBody = JSON.parse(opts.body);
-    return { ok: true, json: async () => ({ content: [{ text: '{}' }] }) };
+    return { ok: true, json: async () => ({ content: [{ type: 'text', text: '{}' }] }) };
   });
 
   const { default: handler } = await loadHandler();
@@ -175,7 +175,7 @@ test('an empty/missing reverseSearchNote adds no "Reverse Image Search Results" 
   let capturedBody;
   stubAnthropicFetch(t, async (_url, opts) => {
     capturedBody = JSON.parse(opts.body);
-    return { ok: true, json: async () => ({ content: [{ text: '{}' }] }) };
+    return { ok: true, json: async () => ({ content: [{ type: 'text', text: '{}' }] }) };
   });
 
   const { default: handler } = await loadHandler();
@@ -207,7 +207,7 @@ test('email tool: server builds the exact EMAIL_SYSTEM prompt from raw fields al
   let capturedBody;
   stubAnthropicFetch(t, async (_url, opts) => {
     capturedBody = JSON.parse(opts.body);
-    return { ok: true, json: async () => ({ content: [{ text: '{}' }] }) };
+    return { ok: true, json: async () => ({ content: [{ type: 'text', text: '{}' }] }) };
   });
 
   const { default: handler, EMAIL_SYSTEM } = await loadHandler();
@@ -379,7 +379,7 @@ test('photo cap: accepts exactly 6 image blocks', async (t) => {
   let capturedBody;
   stubAnthropicFetch(t, async (_url, opts) => {
     capturedBody = JSON.parse(opts.body);
-    return { ok: true, json: async () => ({ content: [{ text: '{}' }] }) };
+    return { ok: true, json: async () => ({ content: [{ type: 'text', text: '{}' }] }) };
   });
 
   const { default: handler } = await loadHandler();
@@ -499,7 +499,7 @@ function stubConcurrency(t, cap = 3, overrides = {}) {
 function stubDeferredFetch(t) {
   const queue = [];
   t.mock.method(globalThis, 'fetch', () => new Promise((resolve) => {
-    queue.push(() => resolve({ ok: true, json: async () => ({ content: [{ text: '{}' }] }) }));
+    queue.push(() => resolve({ ok: true, json: async () => ({ content: [{ type: 'text', text: '{}' }] }) }));
   }));
   return {
     resolveOldest() {
@@ -654,7 +654,7 @@ test('concurrency cap: an acquire_request_slot RPC error fails closed (500), nev
 
 function makeAbortAwareFetch(delayMs) {
   return (_url, opts) => new Promise((resolve, reject) => {
-    const timer = setTimeout(() => resolve({ ok: true, json: async () => ({ content: [{ text: '{}' }] }) }), delayMs);
+    const timer = setTimeout(() => resolve({ ok: true, json: async () => ({ content: [{ type: 'text', text: '{}' }] }) }), delayMs);
     opts.signal.addEventListener('abort', () => {
       clearTimeout(timer);
       const err = new Error('The operation was aborted');
