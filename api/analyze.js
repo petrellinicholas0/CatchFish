@@ -207,6 +207,8 @@ MULTIPLE PHOTOS: If more than one photo is provided, cross-reference them for co
 
 REVERSE IMAGE SEARCH EVIDENCE: If reverse image search results are provided below, they show whether copies of an uploaded photo were found elsewhere online — this detects stolen/reused real photos, a separate concern from AI-generated ones. This is evidence, not proof, either way: 0 matches just means it wasn't found in the search index (many stolen photos aren't indexed, especially first-time reposts), and matches could be a mirror, a legitimate repost by the same person, or genuinely stolen. Fold this evidence directly into the "Image Authenticity" check's likelihood assessment and detail text, phrased the same way as everything else here — "photo found on N other pages" as an indicator, never "this photo is stolen" as a fact.
 
+JSON-ESCAPING RULE: Any literal double-quote character, backslash, or other character that requires escaping inside a JSON string value — including when quoting a phrase directly from the submitted text — must be properly escaped per JSON string rules (e.g. \" for a literal quote, \\ for a literal backslash). A quoted phrase must never be allowed to break the JSON structure.
+
 Return ONLY valid JSON with this exact structure — no markdown, no extra text:
 {
   "score": <integer 0-100, 100=very likely real>,
@@ -242,6 +244,8 @@ IF claim_type IS "business", assess and populate all of the following:
 IF claim_type IS "personal" OR "unclear": do not run any of the four checks above. Set domain_age.checked, domain_match.checked, and auth_alignment.checked to false, their other fields to null or empty as appropriate, and free_mail_as_business to false. Never flag a personal or unclear-claim email as having an "unverified business" or similar — these checks simply do not apply, and their absence is not itself suspicious. Assess only using standard scam-pattern, urgency, and social-engineering indicators.
 
 In every case, also fold every applicable sender_verification finding into the same red_flags/green_flags lists and the same overall score/verdict/summary as the rest of your analysis, in plain language — sender_verification is the structured data, red_flags/green_flags is the narrative summary of the same findings, and the two must agree with each other. This is one cohesive assessment, not a separate report bolted on. Every finding must stay probabilistic and evidence-tied: "high/moderate/low likelihood" or a percentage, paired with the specific indicator.
+
+JSON-ESCAPING RULE: Any literal double-quote character, backslash, or other character that requires escaping inside a JSON string value — including when quoting a phrase directly from the submitted text — must be properly escaped per JSON string rules (e.g. \" for a literal quote, \\ for a literal backslash). A quoted phrase must never be allowed to break the JSON structure.
 
 Return ONLY valid JSON with this exact structure — no markdown, no extra text:
 {
@@ -282,6 +286,8 @@ Additional context checks:
 Be specific: cite short excerpts (not full sentences) to support every finding. If something is unclear or unverifiable, say so explicitly rather than guessing.
 
 OVERALL VERDICT: 3-5 plain-language sentences summarizing what the evidence shows, and — just as importantly — what is NOT strong evidence on its own. This should read like the closing paragraph of a lab report, never as a conclusion about the student: e.g. "Several passages show patterns often associated with AI-generated text, and one statistic could not be verified — these are worth a conversation with the student, but on their own are not proof of anything. The rest of the paper is broadly consistent with the assignment and course level."
+
+JSON-ESCAPING RULE: Any literal double-quote character, backslash, or other character that requires escaping inside a JSON string value — including when quoting a phrase directly from the submitted text — must be properly escaped per JSON string rules (e.g. \" for a literal quote, \\ for a literal backslash). A quoted phrase must never be allowed to break the JSON structure.
 
 Respond ONLY with valid JSON, no markdown, no extra text:
 {
@@ -324,6 +330,8 @@ Supporting context, framed as feedback:
 Keep in mind throughout: AI-detection signals are frequently wrong, and are known to disproportionately flag writing by non-native English speakers and people with certain personal styles as "AI-like" even when it is entirely their own work. This is a self-check tool for the writer's own use, not a judgment of them — let that shape your tone everywhere, not just in one disclaimer.
 
 Close with 2-3 warm, genuinely encouraging sentences about next steps — this should read like the end of a helpful tutoring session, never like a verdict.
+
+JSON-ESCAPING RULE: Any literal double-quote character, backslash, or other character that requires escaping inside a JSON string value — including when quoting a phrase directly from the submitted text — must be properly escaped per JSON string rules (e.g. \" for a literal quote, \\ for a literal backslash). A quoted phrase must never be allowed to break the JSON structure.
 
 Respond ONLY with valid JSON, no markdown, no extra text:
 {
@@ -610,6 +618,29 @@ export default async function handler(req, res) {
     if (!response.ok) {
       console.error('Anthropic API error:', data.error || data);
       return res.status(response.status).json({ error: 'Analysis service error. Please try again.' });
+    }
+
+    // Profile Analyzer and Email Check had the same gap Paper Check
+    // Writer mode did: no server-side check that the model's raw text
+    // actually parses as JSON before it's passed through to the client,
+    // which left a malformed response (e.g. an unescaped literal quote
+    // inside a summary/red_flag string breaking the JSON structure) to
+    // surface as a raw JSON.parse SyntaxError in the client's own catch
+    // block instead of a clean error. Same parse-attempt/502 shape as the
+    // Paper Writer-mode check below, just without that check's additional
+    // improvement_suggestions content validation, which doesn't apply to
+    // either of these tools' schemas.
+    if (tool === 'profile' || tool === 'email') {
+      const rawText = Array.isArray(data.content)
+        ? data.content.filter((block) => block.type === 'text').map((block) => block.text).join('')
+        : '';
+      try {
+        JSON.parse(rawText.replace(/```json|```/g, '').trim());
+      } catch (parseErr) {
+        const toolLabel = tool === 'profile' ? 'Profile Analyzer' : 'Email Check';
+        console.error(`analyze.js: ${tool} response failed to parse as JSON:`, parseErr.message);
+        return res.status(502).json({ error: `${toolLabel} couldn't generate a valid report. Please try again.` });
+      }
     }
 
     // Paper Check Writer mode only -- see PAPER WRITER-MODE DEFENSIVE
