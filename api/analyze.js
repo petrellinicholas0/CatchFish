@@ -93,7 +93,7 @@ const PRO_DAILY_SOFT_CAP = 150;
 // Generous sanity cap — well beyond any legitimate bio/email/paper
 // submission (a very long paper is tens of thousands of characters), but
 // bounds otherwise-unbounded input from driving up per-request cost.
-const MAX_REQUEST_CHARS = 300000;
+const MAX_REQUEST_CHARS = 4000000;
 
 // The Profile Analyzer's client-side upload UI caps photos at 6 (see
 // MAX_PHOTOS in index.html), but that was never enforced here — a direct
