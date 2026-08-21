@@ -70,7 +70,7 @@ export default async function handler(req, res) {
     // value would hand them the completed checkout session straight from
     // Stripe's own redirect. Only trust values set in the deployment
     // environment itself.
-    const origin = process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://catch-fish-two.vercel.app');
+    const origin = process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://www.catchfishapp.com');
 
     const sessionParams = {
       mode,
