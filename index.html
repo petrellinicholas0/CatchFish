@@ -926,36 +926,6 @@ textarea{min-height:84px;line-height:1.55}
   accent-color:var(--coral);cursor:pointer;
 }
 
-/* ─── SHARE CARD ─────────────────────────────── */
-/* Hidden canvas-like div for screenshot sharing */
-#shareCard{
-  position:fixed;
-  left:-9999px;top:0;
-  width:390px;
-  background:var(--ink2);
-  padding:32px 28px;
-  font-family:'Fraunces',serif;
-  z-index:-1;
-}
-.sc-logo{font-size:13px;font-weight:700;color:var(--coral);letter-spacing:-0.01em;margin-bottom:20px}
-.sc-score{font-size:72px;font-weight:900;letter-spacing:-0.06em;line-height:1;margin-bottom:4px}
-.sc-score.hi{color:var(--teal)}.sc-score.md{color:var(--amber)}.sc-score.lo{color:var(--rose)}
-.sc-verdict{font-size:16px;font-weight:700;color:#fff;margin-bottom:8px}
-.sc-summary{font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,.55);line-height:1.6;margin-bottom:20px}
-.sc-checks{display:flex;flex-direction:column;gap:6px;margin-bottom:20px}
-.sc-check{
-  display:flex;align-items:center;gap:8px;
-  font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,.7);
-}
-.sc-check-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
-.sc-check-dot.pass{background:var(--teal)}.sc-check-dot.warn{background:var(--amber)}
-.sc-check-dot.fail{background:var(--rose)}.sc-check-dot.skip{background:#555}
-.sc-footer{
-  font-family:'JetBrains Mono',monospace;font-size:9px;
-  color:rgba(255,255,255,.3);letter-spacing:0.08em;
-  border-top:1px solid rgba(255,255,255,.08);padding-top:12px;
-}
-
 /* ─── TOAST ─────────────────────────────── */
 .toast{
   position:fixed;
@@ -1185,9 +1155,6 @@ textarea{min-height:84px;line-height:1.55}
 
 <!-- ═══════════════════════════════════ TOAST -->
 <div class="toast" id="toast"></div>
-
-<!-- Hidden share card (rendered to canvas) -->
-<div id="shareCard"></div>
 
 <!-- ═══════════════════════════════════ PAGE: HOME -->
 <div class="page on" id="pg-home">
