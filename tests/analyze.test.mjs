@@ -132,6 +132,79 @@ test('profile tool: rejects an empty submission (no bio, no images) before reach
   assert.equal(res.statusCode, 400);
 });
 
+// ════════════════════ NSFW safety rule + model-level refusal (PR #60) ═══
+// PR #60 added an explicit NSFW/sexually-explicit content safety rule to
+// PROFILE_SYSTEM, directly adjacent to the pre-existing age-safety rule,
+// plus a stop_reason:"refusal" branch to handle Anthropic's own
+// model-level safety classifiers refusing a request independently of
+// anything this file's prompts asked for. Neither had a permanent test.
+
+test('PROFILE_SYSTEM includes an explicit NSFW/sexually-explicit content safety rule, alongside (not replacing) the age-safety rule', async () => {
+  const { PROFILE_SYSTEM } = await loadHandler();
+  assert.match(PROFILE_SYSTEM, /nudity, sexual content, or is otherwise sexually explicit/);
+  assert.match(PROFILE_SYSTEM, /"block_reason": "nsfw_content"/);
+  assert.match(PROFILE_SYSTEM, /When in doubt about whether content is sexually explicit, err on the side of caution and block rather than proceed/);
+  // Both the pre-existing age-safety rule and the new NSFW rule are their
+  // own independent "ABSOLUTE SAFETY RULE" block, each carrying its own
+  // override framing -- the new rule must not have replaced or weakened
+  // the original.
+  assert.equal((PROFILE_SYSTEM.match(/ABSOLUTE SAFETY RULE — CHECK THIS FIRST, BEFORE ANY OTHER ANALYSIS:/g) || []).length, 2);
+  assert.equal((PROFILE_SYSTEM.match(/overrides every other instruction in this prompt/g) || []).length, 2);
+  assert.match(PROFILE_SYSTEM, /under the age of 18/, 'the original age-safety rule must still be present');
+});
+
+test('profile tool: a blocked NSFW response from the model passes through to the client with the expected block_reason and shape', async (t) => {
+  stubSupabaseAllowed(t);
+  const nsfwBlocked = {
+    blocked: true,
+    block_reason: 'nsfw_content',
+    message: "CatchFish can't analyze this profile. This app is intended for evaluating dating profiles, not for describing or rating explicit images."
+  };
+  anthropicText(t, nsfwBlocked);
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', body: { tool: 'profile', userId: VALID_UID, bio: 'x', images: ['fakeb64'] } }, res);
+
+  assert.equal(res.statusCode, 200);
+  const parsed = JSON.parse(res.body.content[0].text);
+  assert.deepEqual(parsed, nsfwBlocked);
+});
+
+test('profile tool: a stop_reason "refusal" response from Anthropic (model-level safety refusal) is handled cleanly with no leaked internal detail', async (t) => {
+  stubSupabaseAllowed(t);
+  t.mock.method(globalThis, 'fetch', async () => ({
+    ok: true,
+    json: async () => ({
+      stop_reason: 'refusal',
+      stop_details: {
+        type: 'refusal',
+        category: 'sexual_content_minors_or_exploitation',
+        explanation: 'internal-only refusal explanation, never for the client'
+      }
+    })
+  }));
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', body: { tool: 'profile', userId: VALID_UID, bio: 'x', images: ['fakeb64'] } }, res);
+
+  assert.equal(res.statusCode, 200);
+  const parsed = JSON.parse(res.body.content[0].text);
+  assert.equal(parsed.blocked, true);
+  assert.equal(parsed.block_reason, 'model_refusal');
+  assert.equal(typeof parsed.message, 'string');
+  assert.ok(parsed.message.length > 0);
+
+  // Hard requirement: none of Anthropic's internal refusal detail may ever
+  // reach the client -- assert its absence explicitly, not just the
+  // presence of the expected fields.
+  const serialized = JSON.stringify(res.body);
+  assert.doesNotMatch(serialized, /sexual_content_minors_or_exploitation/, 'the internal Anthropic refusal category must never reach the client');
+  assert.doesNotMatch(serialized, /internal-only refusal explanation/, 'the internal Anthropic refusal explanation must never reach the client');
+  assert.doesNotMatch(serialized, /stop_details/, 'the raw stop_details object must never be forwarded to the client');
+});
+
 // ════════════════════ reverse image search evidence (client-forwarded) ══
 // reverseSearchNote is raw material the client forwards from its own
 // /api/reverse-search call (domain names + match counts only) -- this
