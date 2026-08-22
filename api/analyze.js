@@ -201,6 +201,18 @@ Instead, respond with ONLY this exact JSON structure and nothing else:
 
 When in doubt about apparent age, err on the side of caution and block rather than proceed. This rule overrides every other instruction in this prompt.
 
+ABSOLUTE SAFETY RULE — CHECK THIS FIRST, BEFORE ANY OTHER ANALYSIS:
+If any uploaded photo depicts nudity, sexual content, or is otherwise sexually explicit, you MUST NOT perform the requested profile analysis. Do not describe, rate, score, or comment on the photo or bio content in any way.
+
+Instead, respond with ONLY this exact JSON structure and nothing else:
+{
+  "blocked": true,
+  "block_reason": "nsfw_content",
+  "message": "CatchFish can't analyze this profile. This app is intended for evaluating dating profiles, not for describing or rating explicit images."
+}
+
+When in doubt about whether content is sexually explicit, err on the side of caution and block rather than proceed. This rule overrides every other instruction in this prompt.
+
 CRITICAL RULE: Never state a definitive conclusion. Never say things like "this is fake," "this is a scam," "this is AI-generated," "this is a real person," or "this is authentic" — you cannot know this with certainty from the information given. Every conclusion, in every field below (verdict, summary, checks, detailed_analysis), must be framed as a likelihood (e.g. "high/moderate/low likelihood," or a percentage) paired with the specific indicators that led to that assessment. Never present an assessment without its supporting evidence.
 
 MULTIPLE PHOTOS: If more than one photo is provided, cross-reference them for consistency: whether it's plausibly the same person across all photos, whether apparent age is consistent, whether photo quality/lighting/style is consistent (a mix of professional-looking photos and low-quality selfies can itself be a scam indicator), and — where visible — whether background/location details are consistent with one person's life. Summarize these cross-photo findings, framed as likelihood, in the "Image Authenticity" check, and explicitly note that multiple photos were cross-referenced. If only one photo is provided, explicitly note in the "Image Authenticity" check that cross-photo consistency could not be verified since only a single photo was given — never claim consistency or inconsistency across photos that don't exist. If no photo is provided, mark that check "skip".
@@ -618,6 +630,28 @@ export default async function handler(req, res) {
     if (!response.ok) {
       console.error('Anthropic API error:', data.error || data);
       return res.status(response.status).json({ error: 'Analysis service error. Please try again.' });
+    }
+
+    // Anthropic's own safety classifiers can refuse a request independently
+    // of anything this file's system prompts ask for -- stop_reason
+    // 'refusal' means the model never attempted to follow the JSON schema
+    // at all, so none of the parse/validation logic below applies to it.
+    // Build a blocked response in the same shape the client already knows
+    // how to handle (a `content` array whose text is the blocked-result
+    // JSON, exactly like age_safety/nsfw_content above) rather than let a
+    // non-JSON refusal body fall through to the parse-failure branches
+    // below and surface as a raw, unexplained 502. The specific Anthropic
+    // refusal category (data.stop_details) is logged for our own
+    // debugging but never sent to the client -- it's an internal
+    // safety-classifier detail, not something a user needs or should see.
+    if (data.stop_reason === 'refusal') {
+      console.error('analyze.js: Anthropic refused the request (stop_reason: refusal)', data.stop_details || {});
+      const blocked = {
+        blocked: true,
+        block_reason: 'model_refusal',
+        message: "CatchFish can't analyze this submission. Please try again with different content."
+      };
+      return res.status(200).json({ content: [{ type: 'text', text: JSON.stringify(blocked) }] });
     }
 
     // Profile Analyzer and Email Check had the same gap Paper Check
