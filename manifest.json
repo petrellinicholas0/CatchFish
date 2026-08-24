@@ -1,7 +1,7 @@
 {
-  "name": "CatchFish - Dating Profile Detector",
+  "name": "CatchFish - Scam & Fraud Detector",
   "short_name": "CatchFish",
-  "description": "Detect fake dating profiles, AI-generated photos & romance scams",
+  "description": "Catch scams before they catch you — AI detection for fake dating profiles, phishing emails, and AI-written papers",
   "id": "/",
   "start_url": "/",
   "display": "standalone",
