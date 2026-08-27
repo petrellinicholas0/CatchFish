@@ -1761,6 +1761,59 @@ document.querySelectorAll('.sb').forEach(sb=>{
 // resize/orientationchange/visualViewport are already covered by setAppHeight()
 // above, which calls fitAllSb() itself after every height correction.
 
+// ════════════════════ MODAL SHEET SWIPE-TO-DISMISS
+// Every .modal-sheet has a .modal-handle drag bar that looked swipeable
+// but did nothing -- only the explicit Cancel/close button worked. Wires
+// up real touch-driven dismiss on the handle: drag down past
+// MODAL_SWIPE_DISMISS_PX and release to close (calling the exact same
+// close function each modal's own button already calls, so any extra
+// state reset -- e.g. closeFlagModal()'s flagContext, closeShareChooserModal()'s
+// curSharedText -- stays consistent), otherwise the sheet animates back
+// to place. Scoped to the handle only (not the whole sheet), so it never
+// interferes with scrolling a sheet's own body content.
+const MODAL_SWIPE_DISMISS_PX=100;
+const MODAL_CLOSE_FNS={
+  pwModal:()=>closePW(),
+  flagModal:()=>closeFlagModal(),
+  inspectorModal:()=>closeInspectorModal(),
+  evidencePacketModal:()=>closeEvidencePacketModal(),
+  caseFileInfoModal:()=>closeCaseFileInfo(),
+  shareChooserModal:()=>closeShareChooserModal()
+};
+document.querySelectorAll('.modal-handle').forEach(handle=>{
+  const sheet=handle.closest('.modal-sheet');
+  const overlay=handle.closest('.modal-ov');
+  if(!sheet||!overlay)return;
+  let startY=0,dragging=false;
+
+  handle.addEventListener('touchstart',e=>{
+    startY=e.touches[0].clientY;
+    dragging=true;
+    sheet.style.transition='none';
+  },{passive:true});
+
+  handle.addEventListener('touchmove',e=>{
+    if(!dragging)return;
+    const dy=e.touches[0].clientY-startY;
+    if(dy>0)sheet.style.transform=`translateY(${dy}px)`;
+  },{passive:true});
+
+  handle.addEventListener('touchend',e=>{
+    if(!dragging)return;
+    dragging=false;
+    const dy=(e.changedTouches[0]?.clientY??startY)-startY;
+    if(dy>MODAL_SWIPE_DISMISS_PX){
+      sheet.style.transition='';
+      sheet.style.transform='';
+      const closeFn=MODAL_CLOSE_FNS[overlay.id];
+      if(closeFn)closeFn();
+    }else{
+      sheet.style.transition='transform .2s ease';
+      sheet.style.transform='';
+    }
+  });
+});
+
 // ════════════════════ CONFIG
 const FREE_LIMIT = 3;
 const RESET_HOURS = 24;
@@ -2418,6 +2471,20 @@ async function refreshCredits(){
 let curResult=null;
 let curReverseSearch=null;
 
+// Marks an error as one this app deliberately authored (a clear,
+// human-readable message meant to be shown as-is) so the catch blocks
+// below can tell it apart from a raw browser/JSON-parser exception --
+// e.g. JSON.parse's "Unexpected token 'o'..." or fetch()'s "Failed to
+// fetch" -- which get a friendly fallback instead of their raw technical
+// wording. Marking intent explicitly here is more reliable than pattern-
+// matching on error text, which varies by browser and is never a
+// complete list.
+function userError(msg){
+  const e=new Error(msg);
+  e.isUserFacing=true;
+  return e;
+}
+
 // Reverse image search runs automatically as part of Profile Analyzer --
 // not a separate button -- since its findings feed directly into the AI's
 // Image Authenticity assessment. Gated entirely independently of
@@ -2527,10 +2594,10 @@ async function runAnalysis(){
       return;
     }
     if(!resp.ok || data.error){
-      throw new Error(data.error || data.error?.message || ('API error: '+resp.status));
+      throw userError(data.error || data.error?.message || ('API error: '+resp.status));
     }
     if(!data.content){
-      throw new Error('Unexpected response: '+JSON.stringify(data).slice(0,200));
+      throw userError('Unexpected response: '+JSON.stringify(data).slice(0,200));
     }
     const raw=data.content.map(b=>b.text||'').join('');
     const result=JSON.parse(raw.replace(/```json|```/g,'').trim());
@@ -2561,7 +2628,7 @@ async function runAnalysis(){
   }catch(e){
     clearInterval(st);
     hideLoad();
-    toast('❌ Error: ' + (e && e.message ? e.message : String(e)));
+    toast(e&&e.isUserFacing ? ('❌ '+e.message) : '⚠️ Something went wrong — please try again');
     console.error(e);
   }
 }
@@ -2615,9 +2682,9 @@ async function runEmailAnalysis(){
       openPW();
       return;
     }
-    if(!resp.ok||data.error){throw new Error(data.error||('API error: '+resp.status));}
+    if(!resp.ok||data.error){throw userError(data.error||('API error: '+resp.status));}
     if(!data.content){
-      throw new Error('Unexpected response: '+JSON.stringify(data).slice(0,200));
+      throw userError('Unexpected response: '+JSON.stringify(data).slice(0,200));
     }
     const raw=data.content.map(b=>b.text||'').join('');
     const result=JSON.parse(raw.replace(/```json|```/g,'').trim());
@@ -2628,7 +2695,7 @@ async function runEmailAnalysis(){
     renderEmailResult(result,domainInfo);
     nav('email-result');
   }catch(e){
-    toast('❌ Error: '+(e&&e.message?e.message:'Something went wrong'));
+    toast(e&&e.isUserFacing ? ('❌ '+e.message) : '⚠️ Something went wrong — please try again');
     console.error(e);
   }finally{
     btn.disabled=false;btn.textContent='Analyze Email';
@@ -2693,9 +2760,9 @@ async function runPaperAnalysis(){
       openPW();
       return;
     }
-    if(!resp.ok||data.error){throw new Error(data.error||('API error: '+resp.status));}
+    if(!resp.ok||data.error){throw userError(data.error||('API error: '+resp.status));}
     if(!data.content){
-      throw new Error('Unexpected response: '+JSON.stringify(data).slice(0,200));
+      throw userError('Unexpected response: '+JSON.stringify(data).slice(0,200));
     }
     const raw=data.content.map(b=>b.text||'').join('');
     const result=JSON.parse(raw.replace(/```json|```/g,'').trim());
@@ -2706,7 +2773,7 @@ async function runPaperAnalysis(){
     renderPaperResult(result);
     nav('paper-result');
   }catch(e){
-    toast('❌ Error: '+(e&&e.message?e.message:'Something went wrong'));
+    toast(e&&e.isUserFacing ? ('❌ '+e.message) : '⚠️ Something went wrong — please try again');
     console.error(e);
   }finally{
     btn.disabled=false;btn.textContent='🎓 Check Paper';
