@@ -1,4 +1,4 @@
-const CACHE_NAME = 'catchfish-v4';
+const CACHE_NAME = 'catchfish-v5';
 const urlsToCache = ['/', '/index.html', '/manifest.json'];
 
 // Holds pending Web Share Target payloads only (title/text/url/photo from
@@ -57,12 +57,49 @@ async function handleShareTarget(request) {
   return Response.redirect('/?share=1', 303);
 }
 
+// Cache-first (below) served a stale app shell indefinitely: this cache is
+// only ever repopulated by the 'install' handler above, which only runs
+// when the browser detects sw.js's own bytes changed -- so a deploy that
+// touches only index.html (the overwhelming majority of them) never
+// reached a returning visitor's already-installed service worker. Fixed
+// three times before by manually bumping CACHE_NAME (see its own history);
+// this closes the root cause instead of relying on that being remembered
+// every time. The app shell (navigations, and '/' / '/index.html'
+// directly) now always tries the network first and updates the cache with
+// whatever it gets back -- the cache becomes a fallback for offline use
+// only, never the primary source for these URLs. Every other cached
+// asset (manifest.json, etc.) keeps the original cache-first strategy,
+// since those change far less often and cache-first is still the right
+// tradeoff there.
+function isAppShellRequest(request, url) {
+  return request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html';
+}
+
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (event.request.method === 'POST' && url.pathname === '/share-target') {
     event.respondWith(handleShareTarget(event.request));
     return;
   }
+
+  if (isAppShellRequest(event.request, url)) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          // Only cache a genuinely successful response -- caching a 404/500
+          // error page here would turn the offline fallback into a broken
+          // one the next time the network is unavailable.
+          if (response && response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((response) => response || fetch(event.request))
   );
