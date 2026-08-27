@@ -2616,6 +2616,9 @@ async function runEmailAnalysis(){
       return;
     }
     if(!resp.ok||data.error){throw new Error(data.error||('API error: '+resp.status));}
+    if(!data.content){
+      throw new Error('Unexpected response: '+JSON.stringify(data).slice(0,200));
+    }
     const raw=data.content.map(b=>b.text||'').join('');
     const result=JSON.parse(raw.replace(/```json|```/g,'').trim());
 
@@ -2691,6 +2694,9 @@ async function runPaperAnalysis(){
       return;
     }
     if(!resp.ok||data.error){throw new Error(data.error||('API error: '+resp.status));}
+    if(!data.content){
+      throw new Error('Unexpected response: '+JSON.stringify(data).slice(0,200));
+    }
     const raw=data.content.map(b=>b.text||'').join('');
     const result=JSON.parse(raw.replace(/```json|```/g,'').trim());
 
