@@ -2555,6 +2555,7 @@ async function runAnalysis(){
 
     curResult=result;
     hideLoad();
+    va('event',{name:'profile_analysis_run'});
     showResults(result);
 
   }catch(e){
@@ -2620,6 +2621,7 @@ async function runEmailAnalysis(){
 
     if(!isPro){S.set('cf_usage',used+1);updateUsageUI();refreshCredits();}
 
+    va('event',{name:'email_analysis_run'});
     renderEmailResult(result,domainInfo);
     nav('email-result');
   }catch(e){
@@ -2694,6 +2696,7 @@ async function runPaperAnalysis(){
 
     if(!isPro){S.set('cf_usage',used+1);updateUsageUI();refreshCredits();}
 
+    va('event',{name:'paper_analysis_run'});
     renderPaperResult(result);
     nav('paper-result');
   }catch(e){
@@ -3843,6 +3846,9 @@ window.addEventListener('beforeinstallprompt',e=>{
   e.preventDefault();dProm=e;
   setTimeout(()=>toast('📲 Add CatchFish to your home screen!'),6000);
 });
+</script>
+<script>
+  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
 </script>
 <script defer src="/_vercel/insights/script.js"></script>
 </body>
