@@ -3748,16 +3748,20 @@ async function submitFlag(){
   const reason = document.getElementById('flagReason').value;
   const note = document.getElementById('flagNote').value.trim();
   try{
-    await fetch('/api/report-content', {
+    const resp = await fetch('/api/report-content', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({tool: flagContext, userId: getUid(), reason, note})
     });
+    if(!resp.ok){
+      toast("⚠️ Couldn't submit report — please try again");
+      return; // leave the modal open so the user can retry
+    }
     toast('✅ Report submitted — thank you');
+    closeFlagModal();
   }catch(e){
     toast('⚠️ Could not submit report. Please try again.');
   }
-  closeFlagModal();
 }
 
 function selPlan(el,id){
