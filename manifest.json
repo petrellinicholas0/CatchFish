@@ -1,7 +1,7 @@
 {
   "name": "CatchFish - Scam & Fraud Detector",
   "short_name": "CatchFish",
-  "description": "Catch scams before they catch you — AI detection for fake dating profiles, phishing emails, and AI-written papers",
+  "description": "Catch scams before they catch you — fake dating profiles, phishing emails, and AI-written papers, all in one place",
   "id": "/",
   "start_url": "/",
   "display": "standalone",

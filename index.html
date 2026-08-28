@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="CatchFish">
-<meta name="description" content="Spot fake dating profiles, phishing emails, and AI-generated text — all in one AI-powered detector.">
+<meta name="description" content="Spot fake dating profiles, phishing emails, and AI-generated text — all in one place.">
 <title>CatchFish — AI Scam & Fraud Detector</title>
 <link rel="manifest" href="manifest.json">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -309,6 +309,38 @@ h1,h2,h3,h4{font-weight:900;letter-spacing:-0.03em;line-height:1.1}
 }
 .cf-banner-text{flex:1;font-size:12px;font-weight:700;color:var(--ink);line-height:1.4}
 .cf-banner-arr{color:var(--teal);font-size:16px;flex-shrink:0}
+
+/* ─── CASE FILE HERO CALLOUT (#pg-analyze only) ─────────────────────
+   The "what happens after a match" differentiator, surfaced before a
+   user even submits a photo -- not a competitor anywhere in this space
+   goes past "here's a match." Same visual weight as .score-hero (shadow,
+   rounded, colored top accent) so it reads as a hero callout rather than
+   another list item, but with a coral accent instead of a result-tier
+   color. Whole card is clickable, same pattern as .cf-banner/.tool-card,
+   reusing openCaseFileInfo() as-is -- identical Pro/non-Pro branching as
+   every other Case File entry point. */
+.cf-hero{
+  background:#fff;border:1.5px solid var(--border);
+  border-radius:var(--r);padding:22px 20px;
+  margin-bottom:14px;cursor:pointer;
+  position:relative;overflow:hidden;
+  box-shadow:var(--shadow-lg);
+  transition:border-color .2s;
+}
+.cf-hero:active{border-color:var(--coral)}
+.cf-hero::before{
+  content:'';position:absolute;
+  top:0;left:0;right:0;height:4px;
+  background:var(--coral);
+}
+.cf-hero-tag{
+  font-family:'JetBrains Mono',monospace;
+  font-size:9px;letter-spacing:0.15em;text-transform:uppercase;
+  color:var(--coral);font-weight:700;margin-bottom:10px;
+}
+.cf-hero-title{font-size:20px;font-weight:900;color:var(--ink);margin-bottom:8px;line-height:1.25}
+.cf-hero-body{font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:14px}
+.cf-hero-cta{font-size:13px;font-weight:700;color:var(--coral)}
 
 /* ─── EMAIL HABIT-NUDGE BANNERS (plain, free safety tips -- mirrors
    .cf-banner's bordered/tinted-row shape but with a coral accent instead
@@ -973,7 +1005,7 @@ textarea{min-height:84px;line-height:1.55}
 <div class="ob-ov" id="ob">
   <div class="ob-fish">🎣</div>
   <h1 class="ob-title">Catch<span>Fish</span></h1>
-  <p class="ob-sub">Don't get catfished.<br>AI-powered dating profile detector.<br>Spots fakes, scammers & AI photos.</p>
+  <p class="ob-sub">Don't get catfished.<br>3 tools to catch scams before they catch you.<br>Spots fakes, scammers & AI photos.</p>
   <div class="ob-feats">
     <div class="ob-feat"><span class="ob-feat-icon">🔍</span><div><h4>Profile Analyzer</h4><p>Spots fake dating profiles & AI photos</p></div></div>
     <div class="ob-feat"><span class="ob-feat-icon">✉️</span><div><h4>Email Check</h4><p>Catches phishing & scam emails</p></div></div>
@@ -1269,6 +1301,15 @@ textarea{min-height:84px;line-height:1.55}
     <img src="assets/mascot/standing.png" alt="" class="ph-hero-mascot">
   </div>
   <div class="sb sb-top">
+
+    <!-- Case File differentiator hero -- see .cf-hero's own comment above
+         for why this lives here, before any input card. -->
+    <div class="cf-hero" onclick="openCaseFileInfo()" tabindex="0" role="button">
+      <div class="cf-hero-tag">📁 Beyond detection</div>
+      <div class="cf-hero-title">Found a stolen photo? Now what.</div>
+      <p class="cf-hero-body">Most tools stop at "here's a match." CatchFish helps you build an evidence packet and walks you through takedown requests — so finding the problem isn't a dead end.</p>
+      <div class="cf-hero-cta">See how Case File works ›</div>
+    </div>
 
     <!-- Screenshot smart import -->
     <div class="card">
