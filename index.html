@@ -1993,7 +1993,20 @@ window.addEventListener('load',()=>{
   const checkoutParams = new URLSearchParams(location.search);
   const checkoutStatus = checkoutParams.get('checkout');
   const checkoutSessionId = checkoutParams.get('session_id');
-  if(checkoutStatus) history.replaceState({},'',location.pathname);
+  // Deep-link ad traffic (e.g. a Snapchat ad about "worried about a dating
+  // match?") straight to the matching tool instead of the neutral home
+  // menu, so message-match survives from ad click to first action. Routes
+  // through the existing nav() -- no separate page-switch path -- so it
+  // can never bypass the age-verification gate: #ob is a full-screen
+  // overlay independent of curPage/nav(), so a deep-linked unverified
+  // visitor still sees it first, exactly as any other visitor would, and
+  // simply lands on the matching tool once they clear it. An absent or
+  // unrecognized ?tool= value is a no-op -- default behavior (#pg-home)
+  // is unchanged.
+  const TOOL_DEEP_LINKS={profile:'analyze',email:'email',paper:'paper'};
+  const toolParam=checkoutParams.get('tool');
+  if(checkoutStatus||toolParam) history.replaceState({},'',location.pathname);
+  if(TOOL_DEEP_LINKS[toolParam]) nav(TOOL_DEEP_LINKS[toolParam]);
   if(checkoutStatus==='success'){
     // Never trust the redirect alone — "?checkout=success" is just a URL a
     // browser can be pointed at directly, with no payment involved. Only
