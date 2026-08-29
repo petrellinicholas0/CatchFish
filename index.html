@@ -897,7 +897,7 @@ textarea{min-height:84px;line-height:1.55}
   overflow-y:auto;-webkit-overflow-scrolling:touch;
 }
 .ob-ov.gone{display:none}
-.ob-fish{font-size:64px;margin-bottom:10px;animation:fishBob 2s ease-in-out infinite}
+.ob-mascot{width:130px;height:auto;margin-bottom:14px;animation:fishBob 2s ease-in-out infinite}
 @keyframes fishBob{0%,100%{transform:translateY(0) rotate(-5deg)}50%{transform:translateY(-8px) rotate(5deg)}}
 .ob-title{font-size:38px;font-weight:900;letter-spacing:-0.04em;margin-bottom:8px}
 .ob-title span{color:var(--coral)}
@@ -905,15 +905,6 @@ textarea{min-height:84px;line-height:1.55}
   font-family:'JetBrains Mono',monospace;font-size:12px;
   color:var(--muted);line-height:1.7;margin-bottom:32px;
 }
-.ob-feats{width:100%;margin-bottom:30px}
-.ob-feat{
-  display:flex;align-items:center;gap:14px;
-  padding:13px 0;border-bottom:1px solid var(--border);text-align:left;
-}
-.ob-feat:last-child{border:none}
-.ob-feat-icon{font-size:22px;flex-shrink:0}
-.ob-feat h4{font-size:13px;font-weight:700;margin-bottom:1px}
-.ob-feat p{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted)}
 .ob-note{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-top:10px}
 .ob-age-check{
   display:flex;align-items:flex-start;gap:10px;
@@ -971,17 +962,9 @@ textarea{min-height:84px;line-height:1.55}
 
 <!-- ═══════════════════════════════════ ONBOARDING -->
 <div class="ob-ov" id="ob">
-  <div class="ob-fish">🎣</div>
+  <img src="assets/mascot/casesolved.png" alt="" class="ob-mascot">
   <h1 class="ob-title">Catch<span>Fish</span></h1>
-  <p class="ob-sub">Don't get catfished.<br>AI-powered dating profile detector.<br>Spots fakes, scammers & AI photos.</p>
-  <div class="ob-feats">
-    <div class="ob-feat"><span class="ob-feat-icon">🔍</span><div><h4>Profile Analyzer</h4><p>Spots fake dating profiles & AI photos</p></div></div>
-    <div class="ob-feat"><span class="ob-feat-icon">✉️</span><div><h4>Email Check</h4><p>Catches phishing & scam emails</p></div></div>
-    <div class="ob-feat"><span class="ob-feat-icon">🎓</span><div><h4>Paper Check</h4><p>Flags AI-written text in papers</p></div></div>
-    <div class="ob-feat"><span class="ob-feat-icon">🚩</span><div><h4>Scam Recognition</h4><p>Identifies romance scam patterns & bots</p></div></div>
-    <div class="ob-feat"><span class="ob-feat-icon">📊</span><div><h4>Trust Score</h4><p>0–100 authenticity score with breakdown</p></div></div>
-    <div class="ob-feat"><span class="ob-feat-icon">🔒</span><div><h4>Private Results</h4><p>Stays on your device, never shared</p></div></div>
-  </div>
+  <p class="ob-sub">Every catch has a story.<br>Let's find out if it's true.</p>
   <label class="ob-age-check">
     <input type="checkbox" id="obAgeConfirm" onchange="obAgeToggle()">
     <span>I confirm I am 18 years of age or older, and I will only use CatchFish to evaluate profiles of individuals who are 18 or older.</span>
