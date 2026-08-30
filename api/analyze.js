@@ -1,15 +1,25 @@
 import { getSupabaseAdmin } from '../lib/supabaseAdmin.js';
 
 // Raises the Vercel Function execution ceiling for this route from the
-// platform default up to 60s -- the maximum configurable value on the
-// Hobby plan this project is deployed on (confirmed via Vercel's own
-// changelog: "Vercel Functions for Hobby can now run up to 60 seconds",
-// May 2024; Pro/Enterprise allow higher but that's not this deployment).
-// On its own this does nothing for Paper Check timeouts -- see
-// ANTHROPIC_TIMEOUT_MS below, which is the value that was actually
-// causing them.
+// platform default. Real diagnostic timing (temporary [DIAG] logging
+// against the deployed preview, since removed) showed a *successful* run
+// of the same paper that had previously 504'd took 31.7s for the
+// Anthropic call alone -- confirming this is response-time variance from
+// Anthropic on individual requests, not a deterministic bug in prompt
+// content or output size. The previous 55s/60s budget left only a ~23s
+// margin above that typical duration, razor-thin for a network call with
+// real variance. Raised to 120s to give real headroom.
+// NOTE: an earlier investigation cross-referenced Vercel's own changelog
+// and concluded this project was on the Hobby plan, whose configurable
+// maxDuration ceiling was capped at 60s as of that check -- this comment
+// could not be independently re-verified against the live Vercel account
+// (no dashboard/API access in this sandbox). If the deploy for this value
+// fails or Vercel silently clamps it back to 60s, that is itself the
+// answer to whether the plan is still Hobby-tier, and would mean this
+// number needs a plan upgrade to actually take effect, not just an edit
+// here.
 export const config = {
-  maxDuration: 60
+  maxDuration: 120
 };
 
 // Mirrors the client-side constants in index.html — those still drive the
@@ -19,19 +29,16 @@ const RESET_HOURS = 24;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // How long to wait for the Anthropic API call before aborting it
-// ourselves. This -- not the Vercel `maxDuration` config above -- was the
-// actual, direct cause of the reported Paper Check 504s: it used to be
-// hardcoded at 30000, and Paper Check's larger input (a full paper) plus
-// its longer, more structured 5-section JSON report (fact-check,
-// citation-check, assignment-fit, textbook-alignment, level/voice, on top
-// of the AI-likelihood findings every tool has) routinely pushed
-// generation past 30s, well before Vercel's own function ceiling would
-// ever be reached. Raised to 55s -- as much of the new 60s maxDuration
-// ceiling as can safely be used while still leaving Vercel itself a few
-// seconds of buffer to actually deliver our clean, application-level 504
-// JSON response before a hard platform-level kill would otherwise cut the
+// ourselves. Originally hardcoded at 30000 (the actual, direct cause of
+// the first round of Paper Check 504s), then raised to 55000 alongside
+// the first maxDuration bump. Measured diagnostic data showed a typical
+// successful Anthropic call taking ~32s with real variance beyond that on
+// individual requests -- raised to 110s, leaving Vercel itself the same
+// ~10s buffer (scaled proportionally from the previous 5s-under-60s
+// margin) to actually deliver our clean, application-level 504 JSON
+// response before a hard platform-level kill would otherwise cut the
 // function off mid-response with no body the client can parse.
-const ANTHROPIC_TIMEOUT_MS = 55000;
+const ANTHROPIC_TIMEOUT_MS = 110000;
 
 // Shared ceiling for every tool/mode except Paper Check's Writer mode
 // (see PAPER_WRITER_MAX_TOKENS below). Profile Analyzer and Email Check
@@ -617,12 +624,6 @@ export default async function handler(req, res) {
   const timeout = setTimeout(() => controller.abort(), ANTHROPIC_TIMEOUT_MS);
 
   try {
-    // TEMP DIAGNOSTIC — isolates actual Anthropic call duration from
-    // everything else in this handler (Supabase calls, JSON parsing,
-    // validation). Remove once the real bottleneck is confirmed.
-    const anthropicCallStart = Date.now();
-    console.log(`[DIAG] anthropic fetch start tool=${tool} mode=${body.mode || ''} max_tokens=${maxTokens} t=${anthropicCallStart}`);
-
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       signal: controller.signal,
@@ -639,13 +640,7 @@ export default async function handler(req, res) {
       })
     });
 
-    const anthropicFetchReturnedAt = Date.now();
-    console.log(`[DIAG] anthropic fetch returned status=${response.status} t=${anthropicFetchReturnedAt} elapsed_ms=${anthropicFetchReturnedAt - anthropicCallStart}`);
-
     const data = await response.json();
-
-    const anthropicBodyParsedAt = Date.now();
-    console.log(`[DIAG] anthropic response body parsed t=${anthropicBodyParsedAt} elapsed_since_fetch_returned_ms=${anthropicBodyParsedAt - anthropicFetchReturnedAt} total_anthropic_ms=${anthropicBodyParsedAt - anthropicCallStart}`);
 
     if (!response.ok) {
       console.error('Anthropic API error:', data.error || data);

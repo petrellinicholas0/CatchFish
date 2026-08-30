@@ -2743,31 +2743,68 @@ async function runPaperAnalysis(){
   const btn=document.querySelector('#pg-paper .btn-p');
   btn.disabled=true;btn.textContent='Analyzing...';
 
-  try{
-    // System prompt (instructor vs. writer mode) is built server-side —
-    // see api/analyze.js's PAPER_SYSTEM_INSTRUCTOR / PAPER_SYSTEM_WRITER
-    // and buildPaperContent().
-    const resp=await fetch('/api/analyze',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        tool:'paper',
-        userId:getUid(),
-        mode:paperMode,
-        school,course,textbook,assignment,paperText
-      })
-    });
-    const data=await resp.json();
+  // Paper Check's Anthropic call has real response-time variance and can
+  // legitimately 504 on an individual slow attempt even when the same
+  // request succeeds on a retry (see api/analyze.js's ANTHROPIC_TIMEOUT_MS
+  // comment) -- one silent automatic retry is attempted for a timeout/504
+  // before this surfaces as an error to the user.
+  async function attemptPaperAnalysis(){
+    let resp;
+    try{
+      // System prompt (instructor vs. writer mode) is built server-side —
+      // see api/analyze.js's PAPER_SYSTEM_INSTRUCTOR / PAPER_SYSTEM_WRITER
+      // and buildPaperContent().
+      resp=await fetch('/api/analyze',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          tool:'paper',
+          userId:getUid(),
+          mode:paperMode,
+          school,course,textbook,assignment,paperText
+        })
+      });
+    }catch(networkErr){
+      const e=new Error(networkErr&&networkErr.message||'Network error');
+      e.isRetryable=true;
+      throw e;
+    }
+    if(resp.status===504){
+      const e=new Error('Analysis timed out');
+      e.isRetryable=true;
+      throw e;
+    }
+    let data;
+    try{
+      data=await resp.json();
+    }catch(parseErr){
+      const e=new Error('Non-JSON response');
+      e.isRetryable=true;
+      throw e;
+    }
     if(resp.status===402 && data.limitReached){
-      openPW();
-      return;
+      const e=new Error('limit reached');
+      e.limitReached=true;
+      throw e;
     }
     if(!resp.ok||data.error){throw userError(data.error||('API error: '+resp.status));}
     if(!data.content){
       throw userError('Unexpected response: '+JSON.stringify(data).slice(0,200));
     }
     const raw=data.content.map(b=>b.text||'').join('');
-    const result=JSON.parse(raw.replace(/```json|```/g,'').trim());
+    return JSON.parse(raw.replace(/```json|```/g,'').trim());
+  }
+
+  try{
+    let result;
+    try{
+      result=await attemptPaperAnalysis();
+    }catch(firstErr){
+      if(firstErr.limitReached){openPW();return;}
+      if(!firstErr.isRetryable){throw firstErr;}
+      btn.textContent='Retrying...';
+      result=await attemptPaperAnalysis();
+    }
 
     if(!isPro){S.set('cf_usage',used+1);updateUsageUI();refreshCredits();}
 
@@ -2775,6 +2812,7 @@ async function runPaperAnalysis(){
     renderPaperResult(result);
     nav('paper-result');
   }catch(e){
+    if(e&&e.limitReached){openPW();return;}
     toast(e&&e.isUserFacing ? ('❌ '+e.message) : '⚠️ Something went wrong — please try again');
     console.error(e);
   }finally{
