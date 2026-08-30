@@ -37,15 +37,15 @@ const ANTHROPIC_TIMEOUT_MS = 55000;
 // (see PAPER_WRITER_MAX_TOKENS below). Profile Analyzer and Email Check
 // have fixed-size output shapes (a constant-length checks/red_flags/
 // green_flags array and one bounded free-text field), and Paper Check's
-// Instructor mode's arrays, while unbounded in principle, don't show this
+// Peer reviewing mode's arrays, while unbounded in principle, don't show this
 // failure in practice -- Writer mode is the one flow whose schema adds a
 // further unbounded improvement_suggestions array on top of everything
-// Instructor mode already requires, which is what actually needed room.
+// Peer reviewing mode already requires, which is what actually needed room.
 const DEFAULT_MAX_TOKENS = 4096;
 
 // Paper Check Writer mode's JSON schema is the most token-hungry shape in
 // this file: on top of the same unbounded ai_likelihood_indicators/
-// fact_check/citation_check arrays Instructor mode already has (each
+// fact_check/citation_check arrays Peer reviewing mode already has (each
 // scaling with how many passages/claims/citation issues the actual paper
 // contains), it adds a Writer-mode-only improvement_suggestions array,
 // and the system prompt explicitly instructs enumerating every instance
