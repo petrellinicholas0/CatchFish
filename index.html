@@ -1561,7 +1561,7 @@ textarea{min-height:84px;line-height:1.55}
       <button class="btn-back" onclick="nav('home')" aria-label="Back to Home">←</button>
       <div>
         <div class="ph-title" style="font-size:20px">Paper Check 🎓</div>
-        <div class="ph-sub">Assignment fit & AI-likelihood report</div>
+        <div class="ph-sub">Check your draft, revise, check again — private & unlimited</div>
       </div>
     </div>
   </div>
@@ -1609,11 +1609,17 @@ textarea{min-height:84px;line-height:1.55}
           <label>Paper Text</label>
           <textarea id="paperText" rows="10" placeholder="Paste the full paper here..."></textarea>
         </div>
+
+        <div class="disc" style="margin-top:8px">
+          <p><strong>🔒 Privacy:</strong> We never store your paper. Checked, then forgotten — every time.</p>
+        </div>
+
         <div class="fg" id="paperTopicWrap" style="display:none">
           <label>Topic or Working Thesis</label>
           <input type="text" id="paperTopic" placeholder="e.g. How social media misinformation affects voter behavior in swing states">
         </div>
         <button class="btn-p" onclick="runPaperAnalysis()">🎓 Check Paper</button>
+        <div class="ph-sub" style="text-align:center;margin-top:8px">Not a one-shot scan — check as many drafts as you want before you submit.</div>
 
         <div class="disc" style="margin-top:12px" id="paperDiscWrap">
           <p id="paperDisc"><strong>⚠ Disclaimer:</strong> This report highlights patterns worth a follow-up conversation with the student — it is not proof of AI use or academic dishonesty. Textbook-specific observations may be incomplete or wrong; verify before acting.</p>
@@ -2890,7 +2896,10 @@ function paperAiFindingsHTML(findings){
   return findings.map(f=>`
     <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
       ${f.excerpt?`<div class="analysis-txt" style="font-style:italic;color:var(--muted);margin-bottom:4px">"${esc(f.excerpt)}"</div>`:''}
-      <div class="analysis-txt">${esc(f.pattern)}</div>
+      <div style="display:flex;gap:8px;align-items:flex-start">
+        <div class="analysis-txt" style="flex:1">${esc(f.pattern)}</div>
+        ${f.category?`<span class="card-hd-tag" style="flex-shrink:0">${esc(f.category)}</span>`:''}
+      </div>
       ${f.tip?`<div class="analysis-txt" style="color:var(--teal);margin-top:4px"><strong>Tip:</strong> ${esc(f.tip)}</div>`:''}
     </div>`).join('');
 }
