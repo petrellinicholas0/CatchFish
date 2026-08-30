@@ -617,6 +617,12 @@ export default async function handler(req, res) {
   const timeout = setTimeout(() => controller.abort(), ANTHROPIC_TIMEOUT_MS);
 
   try {
+    // TEMP DIAGNOSTIC — isolates actual Anthropic call duration from
+    // everything else in this handler (Supabase calls, JSON parsing,
+    // validation). Remove once the real bottleneck is confirmed.
+    const anthropicCallStart = Date.now();
+    console.log(`[DIAG] anthropic fetch start tool=${tool} mode=${body.mode || ''} max_tokens=${maxTokens} t=${anthropicCallStart}`);
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       signal: controller.signal,
@@ -633,7 +639,13 @@ export default async function handler(req, res) {
       })
     });
 
+    const anthropicFetchReturnedAt = Date.now();
+    console.log(`[DIAG] anthropic fetch returned status=${response.status} t=${anthropicFetchReturnedAt} elapsed_ms=${anthropicFetchReturnedAt - anthropicCallStart}`);
+
     const data = await response.json();
+
+    const anthropicBodyParsedAt = Date.now();
+    console.log(`[DIAG] anthropic response body parsed t=${anthropicBodyParsedAt} elapsed_since_fetch_returned_ms=${anthropicBodyParsedAt - anthropicFetchReturnedAt} total_anthropic_ms=${anthropicBodyParsedAt - anthropicCallStart}`);
 
     if (!response.ok) {
       console.error('Anthropic API error:', data.error || data);
