@@ -1,15 +1,25 @@
 import { getSupabaseAdmin } from '../lib/supabaseAdmin.js';
 
 // Raises the Vercel Function execution ceiling for this route from the
-// platform default up to 60s -- the maximum configurable value on the
-// Hobby plan this project is deployed on (confirmed via Vercel's own
-// changelog: "Vercel Functions for Hobby can now run up to 60 seconds",
-// May 2024; Pro/Enterprise allow higher but that's not this deployment).
-// On its own this does nothing for Paper Check timeouts -- see
-// ANTHROPIC_TIMEOUT_MS below, which is the value that was actually
-// causing them.
+// platform default. Real diagnostic timing (temporary [DIAG] logging
+// against the deployed preview, since removed) showed a *successful* run
+// of the same paper that had previously 504'd took 31.7s for the
+// Anthropic call alone -- confirming this is response-time variance from
+// Anthropic on individual requests, not a deterministic bug in prompt
+// content or output size. The previous 55s/60s budget left only a ~23s
+// margin above that typical duration, razor-thin for a network call with
+// real variance. Raised to 120s to give real headroom.
+// NOTE: an earlier investigation cross-referenced Vercel's own changelog
+// and concluded this project was on the Hobby plan, whose configurable
+// maxDuration ceiling was capped at 60s as of that check -- this comment
+// could not be independently re-verified against the live Vercel account
+// (no dashboard/API access in this sandbox). If the deploy for this value
+// fails or Vercel silently clamps it back to 60s, that is itself the
+// answer to whether the plan is still Hobby-tier, and would mean this
+// number needs a plan upgrade to actually take effect, not just an edit
+// here.
 export const config = {
-  maxDuration: 60
+  maxDuration: 120
 };
 
 // Mirrors the client-side constants in index.html — those still drive the
@@ -19,19 +29,16 @@ const RESET_HOURS = 24;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // How long to wait for the Anthropic API call before aborting it
-// ourselves. This -- not the Vercel `maxDuration` config above -- was the
-// actual, direct cause of the reported Paper Check 504s: it used to be
-// hardcoded at 30000, and Paper Check's larger input (a full paper) plus
-// its longer, more structured 5-section JSON report (fact-check,
-// citation-check, assignment-fit, textbook-alignment, level/voice, on top
-// of the AI-likelihood findings every tool has) routinely pushed
-// generation past 30s, well before Vercel's own function ceiling would
-// ever be reached. Raised to 55s -- as much of the new 60s maxDuration
-// ceiling as can safely be used while still leaving Vercel itself a few
-// seconds of buffer to actually deliver our clean, application-level 504
-// JSON response before a hard platform-level kill would otherwise cut the
+// ourselves. Originally hardcoded at 30000 (the actual, direct cause of
+// the first round of Paper Check 504s), then raised to 55000 alongside
+// the first maxDuration bump. Measured diagnostic data showed a typical
+// successful Anthropic call taking ~32s with real variance beyond that on
+// individual requests -- raised to 110s, leaving Vercel itself the same
+// ~10s buffer (scaled proportionally from the previous 5s-under-60s
+// margin) to actually deliver our clean, application-level 504 JSON
+// response before a hard platform-level kill would otherwise cut the
 // function off mid-response with no body the client can parse.
-const ANTHROPIC_TIMEOUT_MS = 55000;
+const ANTHROPIC_TIMEOUT_MS = 110000;
 
 // Shared ceiling for every tool/mode except Paper Check's Writer mode
 // (see PAPER_WRITER_MAX_TOKENS below). Profile Analyzer and Email Check
@@ -286,13 +293,13 @@ Your job has exactly four parts:
 3. Fact-check the paper's verifiable claims (see FACT-CHECKING below) — kept fully separate from part 1; a false statistic is not evidence of AI authorship, and an accurate one is not evidence of human authorship.
 4. Two supporting checks that help interpret the above in context: whether the paper addresses the assignment, and whether its vocabulary/reasoning level and (if a textbook is given) terminology are internally consistent.
 
-AI-LIKELIHOOD INDICATORS: Before flagging anything as an AI-generation indicator, actively distinguish it from patterns consistent with non-native English writing — simple or formulaic sentence structure, less varied vocabulary, generic transitions, and hedging language are all common in writing by non-native English speakers and are not, on their own, evidence of AI generation. Independent research has found AI-detection approaches flag non-native English writing as AI-generated at dramatically higher rates than native writing for exactly this reason. When a pattern you're considering could plausibly be explained by non-native English writing rather than AI use, say so explicitly in that finding's "pattern" field rather than defaulting to an AI-likelihood flag — that is itself a complete, useful finding, not a gap. When the overall evidence for AI-likelihood is weak, mixed, or genuinely ambiguous, report the score and findings — and reflect this explicitly in the overall verdict — as a low-confidence or borderline read rather than forcing a clean, decisive-sounding conclusion; "the evidence here is weak or mixed and shouldn't be treated as a strong signal either way" is a fully supported, expected outcome, not something to avoid saying.
+AI-LIKELIHOOD INDICATORS: Before flagging anything as an AI-generation indicator, actively distinguish it from patterns consistent with non-native English writing — simple or formulaic sentence structure, less varied vocabulary, generic transitions, and hedging language are all common in writing by non-native English speakers and are not, on their own, evidence of AI generation. Independent research has found AI-detection approaches flag non-native English writing as AI-generated at dramatically higher rates than native writing for exactly this reason. When a pattern you're considering could plausibly be explained by non-native English writing rather than AI use, say so explicitly in that finding's "pattern" field rather than defaulting to an AI-likelihood flag — that is itself a complete, useful finding, not a gap. When the overall evidence for AI-likelihood is weak, mixed, or genuinely ambiguous, report the score and findings — and reflect this explicitly in the overall verdict — as a low-confidence or borderline read rather than forcing a clean, decisive-sounding conclusion; "the evidence here is weak or mixed and shouldn't be treated as a strong signal either way" is a fully supported, expected outcome, not something to avoid saying. If more than 8 distinct indicators are present across the paper, report the 8 most significant ones rather than exhaustively enumerating every instance.
 
 CATEGORIZING INDICATORS: For each finding under part 2, assign exactly one category — whichever fits best: "Generic phrasing" (vague, non-specific language), "Repetitive structure" (sentence patterns or transitions repeating unusually), "Unusual specificity" (oddly precise or uniform detail atypical of the stated writing level), or "Other" (doesn't cleanly fit the above, but is still worth a caveat-worthy note). The category describes what kind of pattern was observed — it is additive context for the reader, not a stronger or weaker claim about likelihood; every finding still needs its own excerpt and the same probabilistic framing required above, regardless of category.
 
-FACT-CHECKING: Identify factual claims in the paper — statistics, dates, historical or scientific claims, quotes, or claims tied to a citation — and assess each independently of the AI-likelihood analysis. For each: state the claim, then mark it "supported" (checks out against what you know), "unsupported" (appears inaccurate), or "unverified" (you cannot confirm it reliably). Use "unverified" honestly whenever you're not sure — it is a legitimate, expected answer, never a failure to guess anyway.
+FACT-CHECKING: Identify factual claims in the paper — statistics, dates, historical or scientific claims, quotes, or claims tied to a citation — and assess each independently of the AI-likelihood analysis. For each: state the claim, then mark it "supported" (checks out against what you know), "unsupported" (appears inaccurate), or "unverified" (you cannot confirm it reliably). Use "unverified" honestly whenever you're not sure — it is a legitimate, expected answer, never a failure to guess anyway. If the paper contains more than 8 checkable claims, fact-check the 8 most significant ones rather than exhaustively enumerating every instance.
 
-CITATION CHECK: Identify the citation style used (APA, MLA, Chicago notes-bibliography, Chicago author-date, Turabian, or IEEE) or the style stated/implied by the assignment or course. If you can't confidently identify a style, say so plainly rather than guessing, and note whether citations are at least internally consistent with each other regardless. Flag specific formatting problems: mixed styles, malformed in-text citations, malformed reference/bibliography entries. If no citations exist for claims that need one, add an issue noting that, with 1-2 example citation formats for that kind of source. This check covers formatting and internal consistency only — never whether a source is legitimate (that's fact-checking's job above) or whether citing itself was warranted.
+CITATION CHECK: Identify the citation style used (APA, MLA, Chicago notes-bibliography, Chicago author-date, Turabian, or IEEE) or the style stated/implied by the assignment or course. If you can't confidently identify a style, say so plainly rather than guessing, and note whether citations are at least internally consistent with each other regardless. Flag specific formatting problems: mixed styles, malformed in-text citations, malformed reference/bibliography entries. If no citations exist for claims that need one, add an issue noting that, with 1-2 example citation formats for that kind of source. This check covers formatting and internal consistency only — never whether a source is legitimate (that's fact-checking's job above) or whether citing itself was warranted. If more than 8 distinct issues are present, report the 8 most significant ones rather than exhaustively enumerating every instance.
 
 Additional context checks:
 - ASSIGNMENT FIT — Does the paper address what the assignment asked? Note any unaddressed parts of the prompt factually, without implying intent.
@@ -328,15 +335,15 @@ Your job, run for the writer's own benefit:
 5. Improvement suggestions on clarity, argument structure, and citation practice (see IMPROVEMENT SUGGESTIONS below) — feedback on what to work on and why, never a rewrite.
 6. Supporting context: whether the paper addresses the assignment, and whether the level/voice is consistent — framed as feedback, not evaluation.
 
-AI-LIKELIHOOD COACHING: Before treating anything as an indicator, actively distinguish it from patterns common in non-native English writing — simpler or more formulaic sentence structure, less varied vocabulary, generic transitions, and hedging language are all common for non-native English speakers and are not, on their own, a sign of AI use. When a pattern you're considering could plausibly be explained by the writer's own non-native English style rather than AI generation, say so directly in that finding's "pattern" field rather than defaulting to flagging it — that's a complete, useful finding on its own, not something to avoid saying. When the overall evidence is weak, mixed, or genuinely unclear, tell the writer that plainly — in the finding itself and in the overall verdict — rather than forcing a clean, decisive-sounding read; "this evidence is weak or mixed and isn't a strong signal either way" is exactly the kind of honest, useful thing to tell a writer, not a gap to paper over.
+AI-LIKELIHOOD COACHING: Before treating anything as an indicator, actively distinguish it from patterns common in non-native English writing — simpler or more formulaic sentence structure, less varied vocabulary, generic transitions, and hedging language are all common for non-native English speakers and are not, on their own, a sign of AI use. When a pattern you're considering could plausibly be explained by the writer's own non-native English style rather than AI generation, say so directly in that finding's "pattern" field rather than defaulting to flagging it — that's a complete, useful finding on its own, not something to avoid saying. When the overall evidence is weak, mixed, or genuinely unclear, tell the writer that plainly — in the finding itself and in the overall verdict — rather than forcing a clean, decisive-sounding read; "this evidence is weak or mixed and isn't a strong signal either way" is exactly the kind of honest, useful thing to tell a writer, not a gap to paper over. If more than 8 distinct patterns are present across the paper, cover the 8 most significant ones rather than exhaustively enumerating every instance.
 
 CATEGORIZING PATTERNS: For each flagged passage, also assign one category — whichever fits best: "Generic phrasing" (vague, non-specific language), "Repetitive structure" (sentence patterns or transitions repeating unusually), "Unusual specificity" (oddly precise or uniform detail atypical of the writer's stated level), or "Other" (doesn't cleanly fit the above, but still worth flagging). This is just a label for what kind of pattern was noticed — it doesn't make the finding more certain or more serious, and every finding still needs the same gentle, probabilistic framing and genuine revision tip described above.
 
-FACT-CHECKING: Identify factual claims (statistics, dates, historical/scientific claims, quotes, cited claims) and check each independently of the writing-pattern analysis above. For each: state the claim, then mark "supported," "unsupported," or "unverified." Use "unverified" honestly whenever you can't confirm something — never guess.
+FACT-CHECKING: Identify factual claims (statistics, dates, historical/scientific claims, quotes, cited claims) and check each independently of the writing-pattern analysis above. For each: state the claim, then mark "supported," "unsupported," or "unverified." Use "unverified" honestly whenever you can't confirm something — never guess. If the paper contains more than 8 checkable claims, fact-check the 8 most significant ones rather than exhaustively enumerating every instance.
 
 CITATION & SOURCING COACHING: Identify the citation style used, or the style stated/implied by the assignment or course (APA, MLA, Chicago notes-bibliography, Chicago author-date, Turabian, or IEEE). If you can't tell, say so plainly — never guess a style the paper doesn't make clear. Note whether whatever style is used is applied consistently throughout, or shifts partway through. Frame every finding as coaching: what's off, phrased supportively, with a corrected example for each issue.
 
-Beyond formatting, actively scan for SOURCING gaps: every specific factual claim, statistic, or direct quote that appears without a nearby citation is its own issue — add one for each instance you find (not just a single generic note lumping them together), explaining what's missing and, where it helps, a short example of how to cite that kind of source. If no style is specified anywhere in the paper or assignment, don't guess which one applies — offer 1-2 relevant example formats instead.
+Beyond formatting, actively scan for SOURCING gaps: every specific factual claim, statistic, or direct quote that appears without a nearby citation is its own issue — add one for each instance you find (not just a single generic note lumping them together), explaining what's missing and, where it helps, a short example of how to cite that kind of source. If no style is specified anywhere in the paper or assignment, don't guess which one applies — offer 1-2 relevant example formats instead. If formatting problems and sourcing gaps together add up to more than 8 issues, report the 8 most significant ones rather than exhaustively enumerating every instance.
 
 CRITICAL LIMIT ON THIS CHECK — state this in your own framing here, don't just imply it: you have no web access in this call and cannot verify that any cited source actually exists, says what the paper claims it says, or is accurately represented. Every finding in this section is about whether a citation is PRESENT and internally consistent, never about whether the underlying source is real or accurate — never say a citation is "fake," a source "doesn't exist," or a source "doesn't say that." This check covers formatting and sourcing presence/consistency only — never source legitimacy (outside what this tool can do) and never whether citing was ethically necessary; stay descriptive about the writing, never evaluative about the person.
 
