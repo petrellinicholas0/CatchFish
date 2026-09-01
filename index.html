@@ -2487,6 +2487,31 @@ function userError(msg){
   return e;
 }
 
+// Client-side pre-validation for Email Check and Paper Check: catches
+// obviously empty/garbage submissions before they reach /api/analyze and
+// consume a free-tier usage count. Deliberately loose on purpose -- a
+// false positive (blocking a legitimate short or unusual submission) is
+// worse than a false negative here, so these only catch clearly-not-
+// real-content cases, not anything borderline.
+function isKeyboardMashOrRepeated(str){
+  const trimmed=str.trim();
+  if(!trimmed) return false;
+  const counts={};
+  for(const ch of trimmed){counts[ch]=(counts[ch]||0)+1;}
+  const maxCount=Math.max(...Object.values(counts));
+  if(maxCount/trimmed.length>0.8) return true;
+  const first30=trimmed.slice(0,30);
+  if(!/\s/.test(trimmed) && !/[aeiouAEIOU]/.test(first30)) return true;
+  return false;
+}
+
+function isMostlyNonAlphabetic(str){
+  const trimmed=str.trim();
+  if(!trimmed) return true;
+  const letters=(trimmed.match(/[a-zA-Z]/g)||[]).length;
+  return letters/trimmed.length<0.5;
+}
+
 // Reverse image search runs automatically as part of Profile Analyzer --
 // not a separate button -- since its findings feed directly into the AI's
 // Image Authenticity assessment. Gated entirely independently of
@@ -2641,6 +2666,10 @@ async function runEmailAnalysis(){
   const emailText=document.getElementById('emailText').value.trim();
   const emailHeaders=document.getElementById('emailHeaders').value.trim();
   if(!emailText){toast('⚠️ Paste an email to analyze');return;}
+  if(emailText.length<20||isKeyboardMashOrRepeated(emailText)){
+    toast('⚠️ Paste the full email text to analyze');
+    return;
+  }
 
   checkDailyReset();
   const used=S.usage(),isPro=S.isPro();
@@ -2735,6 +2764,10 @@ async function runPaperAnalysis(){
   const assignment=document.getElementById('paperAssignment').value.trim();
   const paperText=document.getElementById('paperText').value.trim();
   if(!paperText){toast('⚠️ Paste the paper to analyze');return;}
+  if(paperText.length<100||isMostlyNonAlphabetic(paperText)){
+    toast('⚠️ Paste more of the paper — need at least a few sentences to analyze');
+    return;
+  }
 
   checkDailyReset();
   const used=S.usage(),isPro=S.isPro();
