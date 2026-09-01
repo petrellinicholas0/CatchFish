@@ -238,3 +238,65 @@ test('credits5/credits15 metadata.plan is clearly distinguishable from "single" 
   assert.notEqual(capturedParams.metadata.plan, 'single');
   assert.equal(capturedParams.metadata.plan, 'credits5');
 });
+
+// ════════════════════ Stripe automatic tax (Pennsylvania nexus) ═════════
+// Enables Stripe Tax's automatic_tax on the Checkout Session so sales tax
+// is calculated and collected at checkout now that PA registration is
+// confirmed active in the Stripe Dashboard. No `customer` param is ever
+// passed to sessions.create() (only customer_email) -- per Stripe's
+// documented behavior, Checkout creates a new Customer and collects/
+// saves their billing address itself once automatic_tax is enabled, with
+// no separate billing_address_collection setting required for that.
+
+test('automatic_tax is enabled on the Checkout Session for a subscription-mode plan', async (t) => {
+  let capturedParams = null;
+  stubStripe(t, () => ({
+    checkout: { sessions: { create: async (params) => { capturedParams = params; return { url: 'https://checkout.stripe.com/real' }; } } }
+  }));
+  stubSupabase(t, () => ({ from: () => ({ upsert: async () => ({ error: null }) }) }));
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', headers: {}, body: { plan: 'monthly', userId: ATTACKER_ID, email: 'x@y.com' } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(capturedParams.automatic_tax, { enabled: true });
+  assert.equal(capturedParams.customer, undefined, 'no customer param -- Checkout must create the Customer itself to collect their address');
+});
+
+test('automatic_tax is enabled on the Checkout Session for a one-time-payment-mode plan', async (t) => {
+  let capturedParams = null;
+  stubStripe(t, () => ({
+    checkout: { sessions: { create: async (params) => { capturedParams = params; return { url: 'https://checkout.stripe.com/real' }; } } }
+  }));
+  stubSupabase(t, () => ({ from: () => ({ upsert: async () => ({ error: null }) }) }));
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', headers: {}, body: { plan: 'single', userId: ATTACKER_ID, email: 'x@y.com' } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(capturedParams.automatic_tax, { enabled: true });
+});
+
+test('automatic_tax does not disturb any other existing session param', async (t) => {
+  let capturedParams = null;
+  stubStripe(t, () => ({
+    checkout: { sessions: { create: async (params) => { capturedParams = params; return { url: 'https://checkout.stripe.com/real' }; } } }
+  }));
+  stubSupabase(t, () => ({ from: () => ({ upsert: async () => ({ error: null }) }) }));
+
+  const { default: handler } = await loadHandler();
+  const res = mockRes();
+  await handler({ method: 'POST', headers: {}, body: { plan: 'monthly', userId: ATTACKER_ID, email: 'x@y.com' } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(capturedParams.mode, 'subscription');
+  assert.equal(capturedParams.line_items[0].price, 'price_1TzMqVPJRgYrBGoz6zGWYRH1');
+  assert.equal(capturedParams.customer_email, 'x@y.com');
+  assert.equal(capturedParams.client_reference_id, ATTACKER_ID);
+  assert.equal(capturedParams.allow_promotion_codes, true);
+  assert.ok(capturedParams.success_url.includes('checkout=success'));
+  assert.ok(capturedParams.cancel_url.includes('checkout=cancel'));
+  assert.deepEqual(capturedParams.subscription_data, { metadata: { userId: ATTACKER_ID, plan: 'monthly' } });
+});

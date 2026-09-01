@@ -80,7 +80,13 @@ export default async function handler(req, res) {
       metadata: { userId, plan },
       success_url: `${origin}/?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/?checkout=cancel`,
-      allow_promotion_codes: true
+      allow_promotion_codes: true,
+      // No `customer` param is passed above (only customer_email), so
+      // Checkout creates a new Customer and collects/saves their billing
+      // address itself as part of the hosted page -- Stripe's documented
+      // default behavior once automatic_tax is enabled, with no separate
+      // billing_address_collection setting required for that to happen.
+      automatic_tax: { enabled: true }
     };
 
     if (mode === 'subscription') {
