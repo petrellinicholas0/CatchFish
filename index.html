@@ -41,6 +41,11 @@
   --r-sm:      8px;
   --nav-h:     68px;
   --safe-b:    env(safe-area-inset-bottom, 0px);
+  /* Reserved height for the persistent Play Store badge banner above .nav
+     -- set to 0px by JS (updatePlayBadgeVisibility()) for installed-app
+     users, so both the banner and the scroll-padding space it reserves in
+     .sb disappear together from a single source of truth. */
+  --play-badge-h: 48px;
   --shadow:    0 2px 16px rgba(14,12,10,0.1);
   --shadow-lg: 0 8px 40px rgba(14,12,10,0.18);
 }
@@ -113,6 +118,24 @@ h1,h2,h3,h4{font-weight:900;letter-spacing:-0.03em;line-height:1.1}
   padding-top:10px;
   z-index:100;
 }
+
+/* Persistent "Get it on Google Play" banner, pinned directly above .nav on
+   every page -- hidden for users already running the installed TWA (see
+   updatePlayBadgeVisibility()), since prompting an install to someone who
+   already has the app is pointless. Same fixed-sibling-of-.nav pattern as
+   .nav itself, so it survives page transitions without being per-page
+   content. */
+.play-badge-banner{
+  position:fixed;left:0;right:0;
+  bottom:calc(var(--nav-h) + var(--safe-b));
+  height:var(--play-badge-h);
+  overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(245,240,232,0.96);
+  border-top:1.5px solid var(--border2);
+  z-index:99;
+}
+.play-badge-banner img{height:32px;width:auto;display:block}
 
 .nav-btn{
   flex:1;display:flex;flex-direction:column;
@@ -208,7 +231,7 @@ h1,h2,h3,h4{font-weight:900;letter-spacing:-0.03em;line-height:1.1}
   flex:1;min-height:0;
   overflow-y:auto;-webkit-overflow-scrolling:touch;
   overscroll-behavior:contain;
-  padding:18px 18px calc(18px + var(--nav-h) + var(--safe-b));
+  padding:18px 18px calc(18px + var(--nav-h) + var(--safe-b) + var(--play-badge-h));
 }
 /* Added by JS (fitSb()) only when content is measured to be shorter than the
    available space — never guessed, never applied while content needs to
@@ -1155,6 +1178,9 @@ textarea{min-height:84px;line-height:1.55}
     <div class="ph-title">CatchFish 🎣</div>
     <div class="ph-sub">3 tools to catch scams before they catch you</div>
     <div class="ph-badge">🔎 Also checks if photos are stolen from someone else</div>
+    <a class="play-badge" data-show="inline-block" href="https://play.google.com/store/apps/details?id=com.nickpetrelli.catchfish" target="_blank" rel="noopener" aria-label="Get it on Google Play" style="margin-top:10px">
+      <img src="https://play.google.com/intl/en_us/badges/images/generic/en-play-badge.png" alt="Get it on Google Play" style="height:40px;width:auto;display:block">
+    </a>
   </div>
   <div class="sb sb-top">
 
@@ -1525,6 +1551,10 @@ textarea{min-height:84px;line-height:1.55}
     <div class="set-section">About</div>
 
     <div class="set-row"><div><div class="set-label">Version</div><div class="set-sub">CatchFish PWA v1.0.0</div></div></div>
+    <a class="set-row play-badge" data-show="flex" href="https://play.google.com/store/apps/details?id=com.nickpetrelli.catchfish" target="_blank" rel="noopener" aria-label="Get it on Google Play">
+      <div><div class="set-label">Get it on Google Play</div><div class="set-sub">Install the app for the full experience</div></div>
+      <img src="https://play.google.com/intl/en_us/badges/images/generic/en-play-badge.png" alt="" style="height:32px;width:auto;flex-shrink:0">
+    </a>
     <a class="set-row" href="/privacy" target="_blank" rel="noopener" style="text-decoration:none;color:inherit"><div><div class="set-label">Privacy Policy</div></div><span class="set-arr">›</span></a>
     <a class="set-row" href="/terms" target="_blank" rel="noopener" style="text-decoration:none;color:inherit"><div><div class="set-label">Terms of Service</div></div><span class="set-arr">›</span></a>
     <a class="set-row" href="mailto:support@catchfishapp.com" style="text-decoration:none;color:inherit"><div><div class="set-label">Contact Support</div></div><span class="set-arr">›</span></a>
@@ -1670,6 +1700,9 @@ textarea{min-height:84px;line-height:1.55}
 </div>
 
 <!-- ═══════════════════════════════════ BOTTOM NAV -->
+<a class="play-badge-banner play-badge" id="playBadgeBanner" data-show="flex" href="https://play.google.com/store/apps/details?id=com.nickpetrelli.catchfish" target="_blank" rel="noopener" aria-label="Get it on Google Play">
+  <img src="https://play.google.com/intl/en_us/badges/images/generic/en-play-badge.png" alt="Get it on Google Play">
+</a>
 <nav class="nav">
   <div class="nav-btn on" onclick="nav('home')" id="nv-home" tabindex="0" role="button"><span class="nav-btn-icon">🏠</span><span class="nav-btn-label">HOME</span></div>
   <div class="nav-btn" onclick="nav('history')" id="nv-history" tabindex="0" role="button"><span class="nav-btn-icon">📋</span><span class="nav-btn-label">HISTORY</span></div>
@@ -1876,6 +1909,22 @@ function isInstalledApp(){
   return document.referrer.includes('android-app://');
 }
 
+// Hides every "Get it on Google Play" badge (.play-badge, wherever it
+// appears -- persistent banner, home hero, settings row) for users already
+// running the installed TWA, using the same isInstalledApp() check the
+// Stripe/Play-Billing checkout branch already relies on. Sets style.display
+// explicitly per element (via each element's own data-show value) rather
+// than toggling a class, since some of these already carry their own
+// display value from CSS (e.g. .play-badge-banner{display:flex}) that
+// would otherwise fight a generic hidden-attribute/class approach.
+function updatePlayBadgeVisibility(){
+  const hide=isInstalledApp();
+  document.querySelectorAll('.play-badge').forEach(el=>{
+    el.style.display=hide?'none':(el.dataset.show||'');
+  });
+  document.documentElement.style.setProperty('--play-badge-h',hide?'0px':'48px');
+}
+
 async function tryPlayBilling(planId){
   const productIdMap = {
     monthly: 'catchfish_monthly',
@@ -1987,6 +2036,7 @@ window.addEventListener('load',()=>{
   renderHomeRecent();
   renderStatCards();
   loadSets();
+  updatePlayBadgeVisibility();
   fitAllSb();
   const checkoutParams = new URLSearchParams(location.search);
   const checkoutStatus = checkoutParams.get('checkout');
