@@ -889,23 +889,10 @@ textarea{min-height:84px;line-height:1.55}
 .ev-empty-inline{color:var(--muted2);font-style:italic}
 
 /* ─── ONBOARDING ─────────────────────────────── */
-.ob-ov{
-  position:fixed;inset:0;background:var(--paper);
-  z-index:500;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;
-  padding:40px 24px;text-align:center;
-  overflow-y:auto;-webkit-overflow-scrolling:touch;
-}
-.ob-ov.gone{display:none}
-.ob-mascot{width:130px;height:auto;margin-bottom:14px;animation:fishBob 2s ease-in-out infinite}
-@keyframes fishBob{0%,100%{transform:translateY(0) rotate(-5deg)}50%{transform:translateY(-8px) rotate(5deg)}}
-.ob-title{font-size:38px;font-weight:900;letter-spacing:-0.04em;margin-bottom:8px}
-.ob-title span{color:var(--coral)}
-.ob-sub{
-  font-family:'JetBrains Mono',monospace;font-size:12px;
-  color:var(--muted);line-height:1.7;margin-bottom:32px;
-}
-.ob-note{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-top:10px}
+/* .ob-age-check is reused as-is by #ageConfirmModal (see the point-of-
+   action age-confirmation modal) -- everything else in the old onboarding
+   splash (.ob-ov and its mascot/title/sub/note styling) was removed along
+   with the splash itself. */
 .ob-age-check{
   display:flex;align-items:flex-start;gap:10px;
   text-align:left;max-width:320px;margin:0 auto 16px;
@@ -934,7 +921,6 @@ textarea{min-height:84px;line-height:1.55}
 @media(max-width:400px){
   .r2{grid-template-columns:1fr}
   .score-num{font-size:70px}
-  .ob-title{font-size:30px}
 }
 
 /* ─── DESKTOP / TABLET LAYOUT ─────────────────────────────── */
@@ -970,16 +956,23 @@ textarea{min-height:84px;line-height:1.55}
 <body>
 
 <!-- ═══════════════════════════════════ ONBOARDING -->
-<div class="ob-ov" id="ob">
-  <img src="assets/mascot/casesolved.png" alt="" class="ob-mascot">
-  <h1 class="ob-title">Catch<span>Fish</span></h1>
-  <p class="ob-sub">Every catch has a story.<br>Let's find out if it's true.</p>
-  <label class="ob-age-check">
-    <input type="checkbox" id="obAgeConfirm" onchange="obAgeToggle()">
-    <span>I confirm I am 18 years of age or older, and I will only use CatchFish to evaluate profiles of individuals who are 18 or older.</span>
-  </label>
-  <button class="btn-p" id="obStartBtn" onclick="obDone()" style="max-width:320px" disabled>Start for Free 🎣</button>
-  <p class="ob-note">3 free analyses included · No signup needed</p>
+<!-- ═══════════════════════════════════ AGE CONFIRMATION (point-of-action) -->
+<!-- Shown the first time a first-time visitor taps an actual submit action
+     (Analyze Profile / Analyze Email / Check Paper / Plan My Research),
+     never on load -- see requireAgeConfirm() below. Same swipe-to-dismiss
+     modal pattern as every other .modal-ov; dismissing it just cancels the
+     pending submit (no analysis has run yet), it does not grant
+     confirmation, so it can't be used to bypass the gate. -->
+<div class="modal-ov" id="ageConfirmModal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Before you continue</div>
+    <label class="ob-age-check" style="margin-bottom:20px">
+      <input type="checkbox" id="ageConfirmCheck" onchange="ageConfirmToggle()">
+      <span>I confirm I am 18 years of age or older, and I will only use CatchFish to evaluate profiles of individuals who are 18 or older.</span>
+    </label>
+    <button class="btn-p" id="ageConfirmBtn" onclick="ageConfirmDone()" disabled>Continue</button>
+  </div>
 </div>
 
 <!-- ═══════════════════════════════════ PAYWALL -->
@@ -1776,7 +1769,8 @@ const MODAL_CLOSE_FNS={
   inspectorModal:()=>closeInspectorModal(),
   evidencePacketModal:()=>closeEvidencePacketModal(),
   caseFileInfoModal:()=>closeCaseFileInfo(),
-  shareChooserModal:()=>closeShareChooserModal()
+  shareChooserModal:()=>closeShareChooserModal(),
+  ageConfirmModal:()=>closeAgeConfirmModal()
 };
 document.querySelectorAll('.modal-handle').forEach(handle=>{
   const sheet=handle.closest('.modal-sheet');
@@ -1964,22 +1958,59 @@ function msToReset(){
   return `Resets in ${h}h ${m}m`;
 }
 
-// ════════════════════ ONBOARDING
-function obAgeToggle(){
-  document.getElementById('obStartBtn').disabled=!document.getElementById('obAgeConfirm').checked;
+// ════════════════════ AGE CONFIRMATION (point-of-action)
+// No onboarding splash exists anymore -- first-time visitors land directly
+// on whatever page is default, same as a returning visitor. The required
+// 18+ confirmation instead gates the moment someone actually taps a submit
+// action (Analyze Profile / Analyze Email / Check Paper / Plan My
+// Research), via requireAgeConfirm() below, called as the very first line
+// of each of those handlers.
+let pendingAgeConfirmCallback=null;
+
+function ageConfirmToggle(){
+  document.getElementById('ageConfirmBtn').disabled=!document.getElementById('ageConfirmCheck').checked;
 }
-function obDone(){
-  if(!document.getElementById('obAgeConfirm').checked) return;
-  S.set('cf_ob',true);
+
+function openAgeConfirmModal(onConfirmed){
+  pendingAgeConfirmCallback=onConfirmed;
+  document.getElementById('ageConfirmCheck').checked=false;
+  document.getElementById('ageConfirmBtn').disabled=true;
+  document.getElementById('ageConfirmModal').classList.add('on');
+}
+
+function closeAgeConfirmModal(){
+  document.getElementById('ageConfirmModal').classList.remove('on');
+  pendingAgeConfirmCallback=null;
+}
+
+function ageConfirmDone(){
+  if(!document.getElementById('ageConfirmCheck').checked) return;
   S.set('cf_age_confirmed',true);
-  document.getElementById('ob').classList.add('gone');
+  document.getElementById('ageConfirmModal').classList.remove('on');
+  const cb=pendingAgeConfirmCallback;
+  pendingAgeConfirmCallback=null;
+  if(cb) cb();
+}
+
+// Shared gate for every analysis submit handler. Returns true (letting the
+// caller fall through and run its own body directly) if already confirmed
+// -- the common case for every returning visitor and every repeat
+// submission in the same session. Critically, it does NOT invoke
+// onConfirmed itself in that branch: onConfirmed is always "call myself
+// again" (e.g. ()=>runAnalysis()), so calling it here as well as letting
+// the caller fall through would re-enter the same function a second time
+// and recurse without end. onConfirmed is only ever actually invoked once,
+// later, from ageConfirmDone() -- the one-time resumption after a first-
+// time visitor actually confirms. Dismissing the modal (swipe/backdrop,
+// via MODAL_CLOSE_FNS) just clears the pending callback -- it never sets
+// cf_age_confirmed, so it cannot be used to skip confirmation and still
+// reach the actual analysis call.
+function requireAgeConfirm(onConfirmed){
+  if(S.get('cf_age_confirmed',false)) return true;
+  openAgeConfirmModal(onConfirmed);
+  return false;
 }
 window.addEventListener('load',()=>{
-  // Age attestation is required of every user, so a pre-existing install that
-  // onboarded before this existed (cf_ob true but cf_age_confirmed missing)
-  // sees the onboarding/attestation screen once more rather than being
-  // grandfathered past a safety requirement.
-  if(S.get('cf_ob',false)&&S.get('cf_age_confirmed',false)) document.getElementById('ob').classList.add('gone');
   checkDailyReset();
   updateUsageUI();
   refreshCredits();
@@ -2681,6 +2712,7 @@ async function runReverseSearch(){
 }
 
 async function runAnalysis(){
+  if(!requireAgeConfirm(()=>runAnalysis())) return;
   const bio=document.getElementById('bio').value.trim();
   const msgs=document.getElementById('msgs').value.trim();
   if(!bio&&!imgB64Arr.length){toast('⚠ Add a photo or bio to analyze');return;}
@@ -2786,6 +2818,7 @@ async function runAnalysis(){
 
 // ════════════════════ RESULTS
 async function runEmailAnalysis(){
+  if(!requireAgeConfirm(()=>runEmailAnalysis())) return;
   const sender=document.getElementById('emailSender').value.trim();
   const emailText=document.getElementById('emailText').value.trim();
   const emailHeaders=document.getElementById('emailHeaders').value.trim();
@@ -2889,6 +2922,9 @@ function selPaperMode(el,mode){
 }
 
 async function runPaperAnalysis(){
+  // Age gate applies before branching, so it covers Research Coach too --
+  // same "Check Paper" submit button, just a different mode.
+  if(!requireAgeConfirm(()=>runPaperAnalysis())) return;
   // Research Coach is a completely separate, Pro-only, pre-writing flow --
   // its own endpoint, its own gating, its own rendering. Everything below
   // this guard is the original instructor/writer code path, unchanged.
